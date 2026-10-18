@@ -1,0 +1,42 @@
+#include <winver.h>
+
+#define FT_VERSION 1,0,0,0
+#define FT_VERSION_STR "1.0.0"
+
+// Icon id 1 is the one Explorer shows for the executable.
+1 ICON "FileTools.ico"
+
+// Fluent UI System Icons subset used for every icon in the UI (see make-icon-font.py).
+200 RCDATA "icons.ttf"
+
+// U2-Net (u2netp) segmentation model for "Sin fondo" (Apache-2.0, see U2NET-LICENSE.txt).
+201 RCDATA "u2netp.onnx"
+
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION FT_VERSION
+PRODUCTVERSION FT_VERSION
+FILEFLAGSMASK VS_FFI_FILEFLAGSMASK
+FILEFLAGS 0
+FILEOS VOS_NT_WINDOWS32
+FILETYPE VFT_APP
+FILESUBTYPE 0
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "CompanyName", "Francisco"
+            VALUE "FileDescription", "FileTools - radial file converter"
+            VALUE "FileVersion", FT_VERSION_STR
+            VALUE "InternalName", "FileTools"
+            VALUE "LegalCopyright", "Copyright (c) 2026 Francisco. MIT License."
+            VALUE "OriginalFilename", "FileTools.exe"
+            VALUE "ProductName", "FileTools"
+            VALUE "ProductVersion", FT_VERSION_STR
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

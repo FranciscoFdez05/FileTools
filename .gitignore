@@ -1,0 +1,16 @@
+# Build output
+build/
+out/
+dist/
+*.zip
+
+# vcpkg manifest-mode install tree and caches
+vcpkg_installed/
+vcpkg-cache/
+
+# IDE
+.vs/
+.vscode/
+*.user
+CMakeSettings.json
+
