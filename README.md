@@ -33,6 +33,9 @@ todo en local y en un único `.exe`.
 | **Archivos** (ZIP, TAR, TAR.GZ, 7Z, RAR) y carpetas | ZIP, TAR, TAR.GZ | Extraer, hash, tamaño de carpeta |
 | **Cualquier otro archivo** | — | Hash, limpiar metadatos |
 
+**Enviar** (herramientas de cualquier archivo o carpeta): pasa archivos a un móvil u otro dispositivo con un
+enlace, un código QR, Bluetooth o Uso compartido cercano (ver abajo).
+
 **Acciones** (cualquier archivo o carpeta): copiar, copiar ruta, mover, ZIP, abrir terminal, flotar (tarjeta para
 dejar archivos y arrastrarlos más tarde), compartir, abrir con, **info** (metadatos) y **hash**.
 
@@ -62,6 +65,25 @@ En ambas: doble clic en una fila copia su valor, **Copiar** copia las filas sele
 | Resto | ExifTool, para los formatos que sabe escribir |
 
 La copia tampoco conserva el origen de descarga que Windows guarda junto a los archivos bajados de Internet.
+
+### Enviar a otro dispositivo
+
+**Enviar** abre una ventana que comparte los archivos mientras está abierta:
+
+- **Enlace y QR (Wi-Fi o cable):** FileTools levanta un pequeño servidor web en el PC y muestra su dirección
+  (`http://192.168.1.34:8765/k3j9xq2a/`) y un código QR. Escanéalo con la cámara del móvil o abre el enlace en
+  cualquier navegador de un dispositivo **conectado a la misma red**: verás una página con cada archivo, su tamaño,
+  una vista previa de las imágenes y un botón **Descargar**. El enlace lleva una clave aleatoria, así que nadie más
+  de la red puede adivinarlo, y deja de funcionar al pulsar **Detener** o cerrar la ventana. Las carpetas se
+  envían como ZIP. Si el PC tiene varias redes (Wi-Fi, cable, VPN…), **Cambiar de red** elige la dirección.
+  La ventana indica cuándo se conecta un dispositivo y el progreso de cada descarga.
+- **Bluetooth…** abre el asistente de transferencia Bluetooth de Windows con los archivos ya elegidos.
+- **Compartir…** abre el panel Compartir de Windows, con **Uso compartido cercano** para enviarlo por Wi-Fi o
+  Bluetooth a otro PC con Windows.
+
+La primera vez Windows puede preguntar si permite a FileTools acceder a la red: acepta en **redes privadas**. Si el
+otro dispositivo no carga la página, comprueba que ambos están en la misma red y que la red del PC está marcada
+como privada.
 
 ### Quitar fondo y vectorizar
 
@@ -112,6 +134,7 @@ Windows y vcpkg).
 
 
 Descarga `FileTools-win-x64.zip` desde [Releases](../../releases), descomprímelo y ejecuta `FileTools.exe`.
+Las novedades de cada versión están en [CHANGELOG.md](CHANGELOG.md).
 
 ### Compilar desde el código
 
@@ -148,10 +171,26 @@ Cada push a `main` se compila en GitHub Actions; al publicar un tag `v*` se crea
    **clic** para verlo en el Explorador o suéltalo sobre otra opción para encadenar operaciones.
 
 Durante el arrastre puedes pulsar otra tecla para cambiar de rueda. Con archivos seleccionados en el Explorador,
-**Ctrl+Alt+Espacio** abre la rueda con el teclado (flechas, Intro, Tab, Esc).
+**Ctrl+Alt+Espacio** abre la rueda con el teclado (flechas, Intro, Tab, Esc). El atajo se puede cambiar en los
+ajustes.
 
-Desde el icono de la bandeja se elige dónde guardar los resultados (junto al original, Descargas o Escritorio),
-la calidad de compresión y el arranque con Windows.
+### Ajustes
+
+**Ctrl+Alt+S**, un clic en el icono de la bandeja o volver a abrir `FileTools.exe` (también `FileTools.exe
+--settings`) muestran la ventana de ajustes. Los cambios se guardan al momento:
+
+- Dónde guardar los resultados: junto al original, Descargas o Escritorio.
+- Calidad al convertir a JPG, WEBP, AVIF y HEIC: 60 a 100 %. Por defecto **100 %**, que guarda WEBP y AVIF
+  sin pérdida (píxeles idénticos) y JPG y HEIC a calidad máxima (JPG sin submuestreo de color). La herramienta
+  **Comprimir** usa siempre su propia calidad, pensada para reducir tamaño.
+- Iniciar con Windows y avisar cuando termina una tarea en segundo plano (los errores se avisan siempre).
+- Estado de ffmpeg y ExifTool, con **Elegir…** para indicar dónde está `exiftool.exe`.
+- Los atajos de teclado (rueda y ajustes): haz clic en uno y pulsa la nueva combinación, que debe llevar Ctrl o
+  Alt (Esc cancela). Si Windows u otra aplicación ya la usa, se mantiene la anterior. **Restablecer** vuelve al
+  atajo por defecto (Ctrl+Alt+Espacio y Ctrl+Alt+S).
+- **Cerrar tarjetas flotantes** y **Salir de FileTools**.
+
+El clic derecho en el icono de la bandeja abre el menú rápido con las mismas opciones.
 
 ### Línea de comandos
 
@@ -165,7 +204,7 @@ FileTools.exe --run tool:hash --log hashes.txt video.mp4
 
 Identificadores: `to:<ext>` y `tool:<compress|metadata|info|hash|nobg|background|redact|rotate|ocr|split|merge|count|mute|audio|gif|frame|normalize|mono|silence|extract>`, `act:zip`.
 `tool:info` y `tool:hash` escriben la tabla en el log (grupo, nombre y valor separados por tabuladores);
-`--panel tool:info <archivo>` abre la ventana sin la rueda.
+`--panel tool:info <archivo>` abre la ventana sin la rueda y `--send <archivos…>` abre la ventana de enviar.
 
 ### Limitaciones conocidas
 
@@ -196,6 +235,11 @@ request. Estructura del código:
 | [src/vectorize.cpp](src/vectorize.cpp) | Vectorizar imágenes a SVG |
 | [src/fileinfo.cpp](src/fileinfo.cpp) | Hashes, metadatos (Windows y ExifTool) y limpieza de documentos de Office |
 | [src/infopanel.cpp](src/infopanel.cpp) | Ventana de hash y metadatos |
+| [src/sendpanel.cpp](src/sendpanel.cpp) | Ventana de enviar: QR, enlace, Bluetooth y Compartir |
+| [src/fileserver.cpp](src/fileserver.cpp) | Servidor HTTP para descargar los archivos desde la red local |
+| [src/qrcode.cpp](src/qrcode.cpp) | Generador de códigos QR |
+| [src/settingspanel.cpp](src/settingspanel.cpp) | Ventana de ajustes |
+| [src/glass.cpp](src/glass.cpp) | Estilo de cristal compartido por las ventanas |
 | [src/shellutil.cpp](src/shellutil.cpp) | Miniaturas, portapapeles, Explorador, compartir |
 | [src/floatshelf.cpp](src/floatshelf.cpp) | Tarjetas flotantes |
 | [res/](res/) | Icono, manifiesto, recursos de versión, `make-icon.ps1` para regenerar el icono y `icons.ttf`, los iconos de la interfaz (ver abajo) |

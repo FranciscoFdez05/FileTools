@@ -84,35 +84,64 @@ static HBITMAP MakeDragImage(const fs::path& file, int size, int count) {
     return hbmp;
 }
 
-DWORD DragOutFiles(HWND hwnd, const std::vector<fs::path>& files) {
-    if (files.empty()) return DROPEFFECT_NONE;
+// Shell data object for `files` (what Explorer hands to drop targets). Null if none of them can be parsed.
+static ComPtr<IDataObject> FilesDataObject(const std::vector<fs::path>& files) {
     std::vector<PIDLIST_ABSOLUTE> pidls;
     for (const auto& f : files) {
         PIDLIST_ABSOLUTE pidl = nullptr;
         if (SUCCEEDED(SHParseDisplayName(f.c_str(), nullptr, &pidl, 0, nullptr))) pidls.push_back(pidl);
     }
-    DWORD effect = DROPEFFECT_NONE;
     ComPtr<IShellItemArray> items;
     ComPtr<IDataObject> data;
     if (!pidls.empty() &&
-        SUCCEEDED(SHCreateShellItemArrayFromIDLists((UINT)pidls.size(), (PCIDLIST_ABSOLUTE_ARRAY)pidls.data(), &items)) &&
-        SUCCEEDED(items->BindToHandler(nullptr, BHID_DataObject, IID_PPV_ARGS(&data)))) {
-        ComPtr<IDragSourceHelper> helper;
-        if (SUCCEEDED(CoCreateInstance(CLSID_DragDropHelper, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&helper)))) {
-            int size = int(96 * gfx::DpiScaleAt(POINT{0, 0}));
-            if (HBITMAP img = MakeDragImage(files[0], size, (int)files.size())) {
-                SHDRAGIMAGE di{};
-                di.sizeDragImage = {size, size};
-                di.ptOffset = {size / 2, size / 2};
-                di.hbmpDragImage = img;
-                di.crColorKey = CLR_NONE;
-                if (FAILED(helper->InitializeFromBitmap(&di, data.Get()))) DeleteObject(img);
-            }
-        }
-        SHDoDragDrop(hwnd, data.Get(), nullptr, DROPEFFECT_COPY | DROPEFFECT_MOVE | DROPEFFECT_LINK, &effect);
-    }
+        SUCCEEDED(SHCreateShellItemArrayFromIDLists((UINT)pidls.size(), (PCIDLIST_ABSOLUTE_ARRAY)pidls.data(), &items)))
+        items->BindToHandler(nullptr, BHID_DataObject, IID_PPV_ARGS(&data));
     for (auto p : pidls) CoTaskMemFree(p);
+    return data;
+}
+
+DWORD DragOutFiles(HWND hwnd, const std::vector<fs::path>& files) {
+    if (files.empty()) return DROPEFFECT_NONE;
+    DWORD effect = DROPEFFECT_NONE;
+    ComPtr<IDataObject> data = FilesDataObject(files);
+    if (!data) return effect;
+    ComPtr<IDragSourceHelper> helper;
+    if (SUCCEEDED(CoCreateInstance(CLSID_DragDropHelper, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&helper)))) {
+        int size = int(96 * gfx::DpiScaleAt(POINT{0, 0}));
+        if (HBITMAP img = MakeDragImage(files[0], size, (int)files.size())) {
+            SHDRAGIMAGE di{};
+            di.sizeDragImage = {size, size};
+            di.ptOffset = {size / 2, size / 2};
+            di.hbmpDragImage = img;
+            di.crColorKey = CLR_NONE;
+            if (FAILED(helper->InitializeFromBitmap(&di, data.Get()))) DeleteObject(img);
+        }
+    }
+    SHDoDragDrop(hwnd, data.Get(), nullptr, DROPEFFECT_COPY | DROPEFFECT_MOVE | DROPEFFECT_LINK, &effect);
     return effect;
+}
+
+bool SendViaBluetooth(const std::vector<fs::path>& files) {
+    // Same as "Send to > Bluetooth device": drop the files on fsquirt.exe, the Bluetooth file transfer wizard.
+    wchar_t sys[MAX_PATH] = {};
+    GetSystemDirectoryW(sys, MAX_PATH);
+    fs::path wizard = fs::path(sys) / L"fsquirt.exe";
+    std::error_code ec;
+    if (!fs::exists(wizard, ec)) return false;
+    ComPtr<IDataObject> data = FilesDataObject(files);
+    ComPtr<IShellItem> item;
+    ComPtr<IDropTarget> target;
+    if (!data || FAILED(SHCreateItemFromParsingName(wizard.c_str(), nullptr, IID_PPV_ARGS(&item))) ||
+        FAILED(item->BindToHandler(nullptr, BHID_SFUIObject, IID_PPV_ARGS(&target))))
+        return false;
+    POINTL pt{0, 0};
+    DWORD effect = DROPEFFECT_COPY;
+    if (FAILED(target->DragEnter(data.Get(), MK_LBUTTON, pt, &effect)) || effect == DROPEFFECT_NONE) {
+        target->DragLeave();
+        return false;
+    }
+    effect = DROPEFFECT_COPY;
+    return SUCCEEDED(target->Drop(data.Get(), MK_LBUTTON, pt, &effect));
 }
 
 static bool OpenClipboardRetry(HWND hwnd) {

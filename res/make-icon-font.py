@@ -48,6 +48,7 @@ ICONS = {
     0xE946: "info",                    # INFO
     0xE75C: "eraser",                  # LIMPIAR
     0xE771: "wand",                    # SIN FONDO
+    0xED14: "qr_code",                 # ENVIAR
     # Editor (src/editor.cpp)
     0xE74E: "save",
     0xE8AB: "flip_horizontal",

@@ -16,3 +16,5 @@ void RevealInExplorer(const std::vector<fs::path>& files);
 void OpenTerminalAt(const fs::path& dir);
 void OpenWithDialog(HWND owner, const fs::path& file);
 bool ShareFiles(HWND hwnd, const std::vector<fs::path>& files);
+// Opens the Bluetooth file transfer wizard with `files` (regular files only) already chosen.
+bool SendViaBluetooth(const std::vector<fs::path>& files);

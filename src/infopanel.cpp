@@ -2,6 +2,7 @@
 
 #include "fileinfo.h"
 #include "gfx.h"
+#include "glass.h"
 #include "shellutil.h"
 
 #include <d2d1.h>
@@ -33,6 +34,8 @@ using namespace Gdiplus;
 
 namespace {
 
+using namespace glass;
+
 constexpr wchar_t kClass[] = L"FileTools.Info";
 constexpr UINT WM_STRIP_DONE = WM_APP + 1;
 constexpr UINT WM_SHEET_READY = WM_APP + 2;
@@ -40,21 +43,6 @@ constexpr UINT_PTR TIMER_CARET = 1;
 enum : int { BTN_NONE = 0, BTN_STRIP, BTN_COPY, BTN_COPYALL, BTN_CLOSE, BTN_EXIFTOOL };
 enum class Tone { Normal, Good, Bad };
 enum class Focus { List, Filter };
-
-// Palette: dark ink on frosted white, Windows blue as the accent.
-const Color kInk(255, 22, 24, 30);
-const Color kLabel(255, 70, 74, 86);   // property names
-const Color kMuted(255, 96, 100, 112);
-const Color kGood(255, 16, 124, 16);
-const Color kBad(255, 196, 43, 28);
-const Color kAccentInk(255, 0, 90, 170);  // group titles
-const Color kWhite(255, 255, 255, 255);
-// Accent gradient, left to right.
-constexpr BYTE kAccent1[3] = {28, 132, 230}, kAccent2[3] = {0, 96, 196};
-
-// DWM attributes newer than some SDK headers.
-constexpr DWORD kDwmDarkMode = 20, kDwmCorners = 33, kDwmBackdrop = 38;
-constexpr int kCornersRound = 2, kBackdropMica = 2;
 
 class Panel;
 std::vector<std::unique_ptr<Panel>> g_panels;
@@ -69,106 +57,7 @@ bool Contains(const std::wstring& haystack, const std::wstring& lowerNeedle) {
     return ToLower(haystack).find(lowerNeedle) != std::wstring::npos;
 }
 
-// Brings the window to the front even though the drag left another app in the foreground.
-void ForceForeground(HWND hwnd) {
-    HWND fg = GetForegroundWindow();
-    DWORD fgThread = fg ? GetWindowThreadProcessId(fg, nullptr) : 0, me = GetCurrentThreadId();
-    bool attached = fgThread && fgThread != me && AttachThreadInput(me, fgThread, TRUE);
-    SetForegroundWindow(hwnd);
-    BringWindowToTop(hwnd);
-    if (attached) AttachThreadInput(me, fgThread, FALSE);
-}
-
-// Frosted pane: translucent white, lighter at the top. A faint dark edge keeps it visible on
-// light backgrounds and a bright inner rim gives the glass bevel.
-void FillGlass(Graphics& g, const RectF& r, float radius, BYTE top, BYTE bottom, BYTE rim, float s, BYTE edge = 26) {
-    if (r.Width <= 0 || r.Height <= 0) return;
-    GraphicsPath p;
-    gfx::AddRoundRect(p, r, radius);
-    LinearGradientBrush b(PointF(0, r.Y - 1), PointF(0, r.Y + r.Height + 1), Color(top, 255, 255, 255),
-                          Color(bottom, 244, 246, 250));
-    g.FillPath(&b, &p);
-    Pen outer(Color(edge, 20, 30, 50), 1.0f * s);
-    g.DrawPath(&outer, &p);
-    GraphicsPath inner;
-    gfx::AddRoundRect(inner, RectF(r.X + s, r.Y + s, r.Width - 2 * s, r.Height - 2 * s), std::max(0.0f, radius - s));
-    Pen pen(Color(rim, 255, 255, 255), 1.0f * s);
-    g.DrawPath(&pen, &inner);
-}
-
-// Soft drop shadow under a pane.
-void Shadow(Graphics& g, const RectF& r, float radius, float s) {
-    for (int i = 4; i >= 1; --i) {
-        GraphicsPath p;
-        float grow = i * 1.6f * s;
-        gfx::AddRoundRect(p, RectF(r.X - grow, r.Y - grow + 2 * s, r.Width + 2 * grow, r.Height + 2 * grow), radius + grow);
-        SolidBrush b(Color(7, 10, 20, 40));
-        g.FillPath(&b, &p);
-    }
-}
-
-// Selection and primary button: blue glass.
-void FillAccent(Graphics& g, const RectF& r, float radius, float s, BYTE alpha = 240) {
-    if (r.Width <= 0 || r.Height <= 0) return;
-    GraphicsPath p;
-    gfx::AddRoundRect(p, r, radius);
-    LinearGradientBrush b(PointF(r.X - 1, 0), PointF(r.X + r.Width + 1, 0),
-                          Color(alpha, kAccent1[0], kAccent1[1], kAccent1[2]),
-                          Color(alpha, kAccent2[0], kAccent2[1], kAccent2[2]));
-    g.FillPath(&b, &p);
-    // Light catching the top half of the glass.
-    LinearGradientBrush sheen(PointF(0, r.Y - 1), PointF(0, r.Y + r.Height / 2 + 1), Color(60, 255, 255, 255),
-                              Color(0, 255, 255, 255));
-    g.FillPath(&sheen, &p);
-    Pen rim(Color(110, 190, 225, 255), 1.0f * s);
-    g.DrawPath(&rim, &p);
-}
-
-Color Accent(BYTE alpha) { return Color(alpha, kAccent1[0], kAccent1[1], kAccent1[2]); }
-
 enum class FontKind { Title, Small, Body, Group, Mono, Button, Count };
-
-// DirectWrite draws much sharper text than GDI+: hinted glyphs on whole pixels.
-struct TextEngine {
-    ComPtr<ID2D1Factory> d2d;
-    ComPtr<IDWriteFactory> dw;
-    ComPtr<IDWriteRenderingParams> params;
-    std::wstring textFamily = L"Segoe UI", monoFamily = L"Consolas";
-};
-
-bool HasFamily(IDWriteFactory* dw, const wchar_t* name) {
-    ComPtr<IDWriteFontCollection> fonts;
-    UINT32 index = 0;
-    BOOL exists = FALSE;
-    return SUCCEEDED(dw->GetSystemFontCollection(&fonts)) && SUCCEEDED(fonts->FindFamilyName(name, &index, &exists)) &&
-           exists;
-}
-
-TextEngine& Engine() {
-    static TextEngine e = [] {
-        TextEngine t;
-        D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, t.d2d.GetAddressOf());
-        DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory),
-                            reinterpret_cast<IUnknown**>(t.dw.GetAddressOf()));
-        if (t.dw) {
-            // Grayscale antialiasing (the surface is translucent, so no ClearType), GDI-style hinting.
-            t.dw->CreateCustomRenderingParams(1.8f, 1.0f, 0.0f, DWRITE_PIXEL_GEOMETRY_FLAT,
-                                              DWRITE_RENDERING_MODE_GDI_CLASSIC, &t.params);
-            if (HasFamily(t.dw.Get(), L"Segoe UI Variable Text")) t.textFamily = L"Segoe UI Variable Text";
-            if (HasFamily(t.dw.Get(), L"Cascadia Mono")) t.monoFamily = L"Cascadia Mono";
-        }
-        return t;
-    }();
-    return e;
-}
-
-D2D1_COLOR_F ToD2D(const Color& c) {
-    return D2D1::ColorF(c.GetR() / 255.0f, c.GetG() / 255.0f, c.GetB() / 255.0f, c.GetA() / 255.0f);
-}
-
-RectF Snap(const RectF& r) {
-    return RectF(std::round(r.X), std::round(r.Y), std::round(r.Width), std::round(r.Height));
-}
 
 // Text queued while GDI+ paints the shapes, then drawn on top with DirectWrite.
 struct TextOp {
@@ -353,18 +242,7 @@ private:
         if (target_->EndDraw() == D2DERR_RECREATE_TARGET) target_.Reset();
     }
 
-    void ApplyGlass() {
-        BOOL dark = FALSE;
-        DwmSetWindowAttribute(hwnd_, kDwmDarkMode, &dark, sizeof(dark));
-        int corners = kCornersRound;
-        DwmSetWindowAttribute(hwnd_, kDwmCorners, &corners, sizeof(corners));
-        int backdrop = kBackdropMica;
-        glass_ = SUCCEEDED(DwmSetWindowAttribute(hwnd_, kDwmBackdrop, &backdrop, sizeof(backdrop)));
-        if (glass_) {
-            MARGINS all{-1, -1, -1, -1};
-            DwmExtendFrameIntoClientArea(hwnd_, &all);
-        }
-    }
+    void ApplyGlass() { glass_ = ApplyBackdrop(hwnd_); }
 
     // Hash sheets get just the room they need; metadata gets a comfortable reading size.
     SIZE PreferredClientSize(const RECT& work) {
@@ -555,19 +433,9 @@ private:
         baseDirty_ = false;
         Bitmap bmp(w, h, w * 4, PixelFormat32bppPARGB, reinterpret_cast<BYTE*>(base_.data()));
         Graphics g(&bmp);
-        g.SetSmoothingMode(SmoothingModeAntiAlias);
-        g.SetPixelOffsetMode(PixelOffsetModeHalf);
-        g.SetCompositingQuality(CompositingQualityHighQuality);
-        g.SetInterpolationMode(InterpolationModeHighQualityBicubic);
+        SetQuality(g);
         float W = float(w), H = float(h), m = M();
-        // Backdrop: a light wash over Mica, or an opaque frost when there is none.
-        if (glass_) {
-            LinearGradientBrush wash(PointF(0, 0), PointF(W, H), Color(150, 255, 255, 255), Color(95, 246, 249, 255));
-            g.FillRectangle(&wash, 0.0f, 0.0f, W, H);
-        } else {
-            LinearGradientBrush wash(PointF(0, 0), PointF(0, H), Color(255, 248, 248, 251), Color(255, 234, 235, 241));
-            g.FillRectangle(&wash, 0.0f, 0.0f, W, H);
-        }
+        FillBackdrop(g, W, H, glass_);
         if (icon_) {
             float box = std::round(44 * s_), iw = float(icon_->GetWidth()), ih = float(icon_->GetHeight());
             if (iw <= box && ih <= box)

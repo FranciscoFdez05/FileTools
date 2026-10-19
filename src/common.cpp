@@ -214,6 +214,40 @@ Settings& AppSettings() {
     return s;
 }
 
+std::wstring HotkeyName(DWORD hotkey) {
+    UINT mods = HotkeyMods(hotkey), vk = HotkeyVk(hotkey);
+    std::wstring name;
+    if (mods & MOD_CONTROL) name += L"Ctrl+";
+    if (mods & MOD_ALT) name += L"Alt+";
+    if (mods & MOD_SHIFT) name += L"Mayús+";
+    if (mods & MOD_WIN) name += L"Win+";
+    if ((vk >= 'A' && vk <= 'Z') || (vk >= '0' && vk <= '9')) return name + wchar_t(vk);
+    if (vk >= VK_F1 && vk <= VK_F24) return name + L"F" + std::to_wstring(vk - VK_F1 + 1);
+    switch (vk) {
+        case VK_SPACE: return name + L"Espacio";
+        case VK_RETURN: return name + L"Intro";
+        case VK_TAB: return name + L"Tab";
+        case VK_BACK: return name + L"Retroceso";
+        case VK_DELETE: return name + L"Supr";
+        case VK_INSERT: return name + L"Insert";
+        case VK_HOME: return name + L"Inicio";
+        case VK_END: return name + L"Fin";
+        case VK_PRIOR: return name + L"RePág";
+        case VK_NEXT: return name + L"AvPág";
+        case VK_LEFT: return name + L"←";
+        case VK_RIGHT: return name + L"→";
+        case VK_UP: return name + L"↑";
+        case VK_DOWN: return name + L"↓";
+    }
+    if (vk >= VK_NUMPAD0 && vk <= VK_NUMPAD9) return name + L"Num " + std::to_wstring(vk - VK_NUMPAD0);
+    // Punctuation and anything else: the character the key types on the current layout, else its name.
+    if (UINT ch = MapVirtualKeyW(vk, MAPVK_VK_TO_CHAR) & 0x7FFFFFFF; ch > 32)
+        return name + std::wstring(1, wchar_t(towupper(wchar_t(ch))));
+    wchar_t key[64] = {};
+    if (GetKeyNameTextW(LONG(MapVirtualKeyW(vk, MAPVK_VK_TO_VSC)) << 16, key, 64) > 0) return name + key;
+    return name + L"Tecla " + std::to_wstring(vk);
+}
+
 static void ReadDword(const wchar_t* name, DWORD& v) {
     DWORD size = sizeof(DWORD);
     RegGetValueW(HKEY_CURRENT_USER, kRegKey, name, RRF_RT_REG_DWORD, nullptr, &v, &size);
@@ -225,6 +259,11 @@ void LoadSettings() {
     ReadDword(L"Quality", s.quality);
     ReadDword(L"StartWithWindows", s.startWithWindows);
     ReadDword(L"Welcomed", s.welcomed);
+    ReadDword(L"Notifications", s.notifications);
+    ReadDword(L"WheelHotkey", s.wheelHotkey);
+    ReadDword(L"SettingsHotkey", s.settingsHotkey);
+    if (!HotkeyVk(s.wheelHotkey)) s.wheelHotkey = kDefaultWheelHotkey;
+    if (!HotkeyVk(s.settingsHotkey)) s.settingsHotkey = kDefaultSettingsHotkey;
     s.quality = std::clamp<DWORD>(s.quality, 30, 100);
 }
 
@@ -238,6 +277,9 @@ void SaveSettings() {
     put(L"Quality", s.quality);
     put(L"StartWithWindows", s.startWithWindows);
     put(L"Welcomed", s.welcomed);
+    put(L"Notifications", s.notifications);
+    put(L"WheelHotkey", s.wheelHotkey);
+    put(L"SettingsHotkey", s.settingsHotkey);
     RegCloseKey(key);
 }
 

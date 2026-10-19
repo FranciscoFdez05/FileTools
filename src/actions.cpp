@@ -9,6 +9,7 @@
 #include "media.h"
 #include "ocr.h"
 #include "pdf.h"
+#include "sendpanel.h"
 #include "shellutil.h"
 #include "vectorize.h"
 
@@ -53,6 +54,7 @@ constexpr wchar_t kGlyphCount = 0xE8EF;
 constexpr wchar_t kGlyphInfo = 0xE946;
 constexpr wchar_t kGlyphErase = 0xE75C;
 constexpr wchar_t kGlyphWand = 0xE771;
+constexpr wchar_t kGlyphQr = 0xED14;
 
 std::wstring CanonicalExt(const fs::path& p) {
     std::wstring e = ExtOf(p);
@@ -856,39 +858,44 @@ std::vector<ActionDef> ActionsFor(Mode mode, const std::vector<fs::path>& files)
             default: return Formats({L"zip", L"tar", L"tgz"}, L"");
         }
     }
-    switch (kind) {
-        case Kind::Image:
-            return {{"tool:compress", L"COMPRIMIR", kGlyphCompress}, {"tool:metadata", L"LIMPIAR", kGlyphErase},
-                    {"tool:edit", L"EDITAR", kGlyphSliders, true},    {"tool:annotate", L"ANOTAR", kGlyphPen, true},
-                    {"tool:background", L"FONDO", kGlyphPicture},     {"tool:nobg", L"SIN FONDO", kGlyphWand, true},
-                    {"tool:crop", L"RECORTAR", kGlyphCrop, true},
-                    {"tool:redact", L"CENSURAR", kGlyphHide},         {"tool:rotate", L"ROTAR", kGlyphRotate},
-                    {"tool:ocr", L"TEXTO", kGlyphText}};
-        case Kind::Pdf:
-            return {{"tool:compress", L"COMPRIMIR", kGlyphCompress}, {"tool:split", L"DIVIDIR", kGlyphCut},
-                    {"tool:merge", L"UNIR", kGlyphLink},              {"tool:rotate", L"ROTAR", kGlyphRotate},
-                    {"tool:redact", L"CENSURAR", kGlyphHide},         {"tool:ocr", L"TEXTO", kGlyphText},
-                    {"tool:metadata", L"LIMPIAR", kGlyphErase}};
-        case Kind::Video:
-            return {{"tool:compress", L"COMPRIMIR", kGlyphCompress}, {"tool:mute", L"SILENCIAR", kGlyphMute},
-                    {"tool:audio", L"AUDIO", kGlyphMusic},            {"tool:gif", L"GIF", kGlyphSlideshow},
-                    {"tool:rotate", L"ROTAR", kGlyphRotate},          {"tool:frame", L"FOTOGRAMA", kGlyphCamera},
-                    {"tool:metadata", L"LIMPIAR", kGlyphErase}};
-        case Kind::Audio:
-            return {{"tool:compress", L"COMPRIMIR", kGlyphCompress}, {"tool:normalize", L"NORMALIZAR", kGlyphVolume},
-                    {"tool:mono", L"MONO", kGlyphSpeaker},            {"tool:silence", L"SILENCIOS", kGlyphCut},
-                    {"tool:metadata", L"LIMPIAR", kGlyphErase}};
-        case Kind::Archive:
-            return {{"tool:extract", L"EXTRAER", kGlyphFolderOpen}, {"tool:hash", L"HASH", kGlyphFingerprint}};
-        case Kind::Document:
-            return {{"tool:merge", L"UNIR", kGlyphLink},
-                    {"tool:count", L"CONTAR", kGlyphCount},
-                    {"tool:hash", L"HASH", kGlyphFingerprint},
-                    {"tool:metadata", L"LIMPIAR", kGlyphErase}};
-        case Kind::Folder:
-            return {{"tool:count", L"TAMAÑO", kGlyphCount}, {"tool:hash", L"HASH", kGlyphFingerprint}};
-        default: return {{"tool:hash", L"HASH", kGlyphFingerprint}, {"tool:metadata", L"LIMPIAR", kGlyphErase}};
-    }
+    std::vector<ActionDef> tools = [&]() -> std::vector<ActionDef> {
+        switch (kind) {
+            case Kind::Image:
+                return {{"tool:compress", L"COMPRIMIR", kGlyphCompress}, {"tool:metadata", L"LIMPIAR", kGlyphErase},
+                        {"tool:edit", L"EDITAR", kGlyphSliders, true},    {"tool:annotate", L"ANOTAR", kGlyphPen, true},
+                        {"tool:background", L"FONDO", kGlyphPicture},     {"tool:nobg", L"SIN FONDO", kGlyphWand, true},
+                        {"tool:crop", L"RECORTAR", kGlyphCrop, true},
+                        {"tool:redact", L"CENSURAR", kGlyphHide},         {"tool:rotate", L"ROTAR", kGlyphRotate},
+                        {"tool:ocr", L"TEXTO", kGlyphText}};
+            case Kind::Pdf:
+                return {{"tool:compress", L"COMPRIMIR", kGlyphCompress}, {"tool:split", L"DIVIDIR", kGlyphCut},
+                        {"tool:merge", L"UNIR", kGlyphLink},              {"tool:rotate", L"ROTAR", kGlyphRotate},
+                        {"tool:redact", L"CENSURAR", kGlyphHide},         {"tool:ocr", L"TEXTO", kGlyphText},
+                        {"tool:metadata", L"LIMPIAR", kGlyphErase}};
+            case Kind::Video:
+                return {{"tool:compress", L"COMPRIMIR", kGlyphCompress}, {"tool:mute", L"SILENCIAR", kGlyphMute},
+                        {"tool:audio", L"AUDIO", kGlyphMusic},            {"tool:gif", L"GIF", kGlyphSlideshow},
+                        {"tool:rotate", L"ROTAR", kGlyphRotate},          {"tool:frame", L"FOTOGRAMA", kGlyphCamera},
+                        {"tool:metadata", L"LIMPIAR", kGlyphErase}};
+            case Kind::Audio:
+                return {{"tool:compress", L"COMPRIMIR", kGlyphCompress}, {"tool:normalize", L"NORMALIZAR", kGlyphVolume},
+                        {"tool:mono", L"MONO", kGlyphSpeaker},            {"tool:silence", L"SILENCIOS", kGlyphCut},
+                        {"tool:metadata", L"LIMPIAR", kGlyphErase}};
+            case Kind::Archive:
+                return {{"tool:extract", L"EXTRAER", kGlyphFolderOpen}, {"tool:hash", L"HASH", kGlyphFingerprint}};
+            case Kind::Document:
+                return {{"tool:merge", L"UNIR", kGlyphLink},
+                        {"tool:count", L"CONTAR", kGlyphCount},
+                        {"tool:hash", L"HASH", kGlyphFingerprint},
+                        {"tool:metadata", L"LIMPIAR", kGlyphErase}};
+            case Kind::Folder:
+                return {{"tool:count", L"TAMAÑO", kGlyphCount}, {"tool:hash", L"HASH", kGlyphFingerprint}};
+            default: return {{"tool:hash", L"HASH", kGlyphFingerprint}, {"tool:metadata", L"LIMPIAR", kGlyphErase}};
+        }
+    }();
+    // Any file or folder can be sent to another device.
+    tools.push_back({"tool:send", L"ENVIAR", kGlyphQr, true});
+    return tools;
 }
 
 JobResult RunAction(const std::string& id, const std::vector<fs::path>& files, const Progress& progress) {
@@ -943,6 +950,9 @@ JobResult RunUiAction(const std::string& id, const std::vector<fs::path>& files,
             r.message = L"Compartiendo…";
         } else if (id == "act:openwith") {
             OpenWithDialog(owner, files[0]);
+            r.hide = true;
+        } else if (id == "tool:send") {
+            OpenSendPanel(files, anchor);
             r.hide = true;
         } else if (id == "tool:nobg") {
             for (const auto& f : files) OpenEditor(f, EditorMode::Background);

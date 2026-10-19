@@ -5,6 +5,8 @@
 #include "gfx.h"
 #include "infopanel.h"
 #include "media.h"
+#include "sendpanel.h"
+#include "settingspanel.h"
 #include "shellutil.h"
 #include "wheel.h"
 
@@ -24,10 +26,13 @@ constexpr UINT WM_HOOK_MODIFIER = WM_APP + 3;
 constexpr UINT WM_HOOK_MOUSEDOWN = WM_APP + 4;
 constexpr UINT WM_HOOK_NAVKEY = WM_APP + 5;
 constexpr UINT WM_BACKGROUND_RESULT = WM_APP + 6;
+constexpr UINT WM_OPEN_SETTINGS = WM_APP + 7;  // sent by a second launch
 constexpr int kHotkeyId = 1;
+constexpr int kSettingsHotkeyId = 2;
 
 enum MenuId {
     ID_HELP = 1,
+    ID_SETTINGS,
     ID_OUT_NEXT = 10,
     ID_OUT_DOWNLOADS,
     ID_OUT_DESKTOP,
@@ -36,7 +41,7 @@ enum MenuId {
     ID_CLOSE_FLOATS,
     ID_QUIT = 99,
 };
-constexpr DWORD kQualities[] = {60, 75, 85, 90, 95};
+constexpr DWORD kQualities[] = {60, 75, 85, 90, 95, 100};
 
 HINSTANCE g_inst;
 HWND g_main;
@@ -180,19 +185,43 @@ void AddTrayIcon() {
     Shell_NotifyIconW(NIM_SETVERSION, &g_nid);
 }
 
+void UnregisterHotkeys() {
+    UnregisterHotKey(g_main, kHotkeyId);
+    UnregisterHotKey(g_main, kSettingsHotkeyId);
+}
+
+// (Re)registers the shortcuts chosen in the settings. Returns what could not be registered, if anything.
+std::wstring RegisterHotkeys() {
+    UnregisterHotkeys();
+    std::wstring failed;
+    const Settings& s = AppSettings();
+    for (auto [id, hotkey] : {std::pair{kHotkeyId, s.wheelHotkey}, std::pair{kSettingsHotkeyId, s.settingsHotkey}})
+        if (!RegisterHotKey(g_main, id, HotkeyMods(hotkey) | MOD_NOREPEAT, HotkeyVk(hotkey)))
+            failed += (failed.empty() ? L"" : L" y ") + HotkeyName(hotkey);
+    return failed.empty() ? L"" : L"No se pudo usar " + failed + L": lo usa otra aplicación o Windows.";
+}
+
+void OpenSettings() {
+    POINT pt;
+    GetCursorPos(&pt);
+    OpenSettingsPanel(pt, {[] { DestroyWindow(g_main); }, UnregisterHotkeys, RegisterHotkeys});
+}
+
 void ShowHelp() {
-    MessageBoxW(nullptr,
-                L"Arrastra uno o varios archivos y, sin soltar el botón, pulsa:\n\n"
-                L"     Mayús  →  Convertir a otro formato\n"
-                L"     Ctrl     →  Herramientas (comprimir, recortar, OCR…)\n"
-                L"     Alt       →  Acciones (copiar, mover, ZIP, compartir…)\n\n"
-                L"Suelta el archivo sobre una opción de la rueda. El resultado aparece en el centro: "
-                L"arrástralo a donde quieras o haz clic para verlo en el Explorador. Puedes pulsar otra tecla "
-                L"durante el arrastre para cambiar de rueda.\n\n"
-                L"Con archivos seleccionados en el Explorador, pulsa Ctrl+Alt+Espacio para abrir la rueda con el "
-                L"teclado (flechas, Intro, Tab, Esc).\n\n"
-                L"Todo se procesa en local. Audio y vídeo requieren ffmpeg.",
-                L"FileTools", MB_OK | MB_ICONINFORMATION | MB_SETFOREGROUND);
+    const Settings& s = AppSettings();
+    std::wstring text =
+        L"Arrastra uno o varios archivos y, sin soltar el botón, pulsa:\n\n"
+        L"     Mayús  →  Convertir a otro formato\n"
+        L"     Ctrl     →  Herramientas (comprimir, recortar, OCR…)\n"
+        L"     Alt       →  Acciones (copiar, mover, ZIP, compartir…)\n\n"
+        L"Suelta el archivo sobre una opción de la rueda. El resultado aparece en el centro: "
+        L"arrástralo a donde quieras o haz clic para verlo en el Explorador. Puedes pulsar otra tecla "
+        L"durante el arrastre para cambiar de rueda.\n\n"
+        L"Con archivos seleccionados en el Explorador, pulsa " + HotkeyName(s.wheelHotkey) +
+        L" para abrir la rueda con el teclado (flechas, Intro, Tab, Esc).\n\n" + HotkeyName(s.settingsHotkey) +
+        L" (o clic en el icono de la bandeja) abre los ajustes, donde también puedes cambiar estos atajos.\n\n"
+        L"Todo se procesa en local. Audio y vídeo requieren ffmpeg.";
+    MessageBoxW(nullptr, text.c_str(), L"FileTools", MB_OK | MB_ICONINFORMATION | MB_SETFOREGROUND);
 }
 
 void ShowTrayMenu() {
@@ -209,9 +238,10 @@ void ShowTrayMenu() {
     HMENU menu = CreatePopupMenu();
     AppendMenuW(menu, MF_STRING | MF_DISABLED, 0, L"FileTools");
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(menu, MF_STRING | MF_DEFAULT, ID_SETTINGS, (L"Ajustes…\t" + HotkeyName(s.settingsHotkey)).c_str());
     AppendMenuW(menu, MF_STRING, ID_HELP, L"Cómo se usa…");
     AppendMenuW(menu, MF_POPUP, (UINT_PTR)out, L"Guardar resultados en");
-    AppendMenuW(menu, MF_POPUP, (UINT_PTR)quality, L"Calidad (JPG, WEBP, AVIF, HEIC)");
+    AppendMenuW(menu, MF_POPUP, (UINT_PTR)quality, L"Calidad al convertir (JPG, WEBP, AVIF, HEIC)");
     AppendMenuW(menu, MF_STRING | (s.startWithWindows ? MF_CHECKED : 0), ID_STARTUP, L"Iniciar con Windows");
     AppendMenuW(menu, MF_STRING, ID_CLOSE_FLOATS, L"Cerrar tarjetas flotantes");
     AppendMenuW(menu, MF_STRING | MF_DISABLED, 0,
@@ -226,7 +256,8 @@ void ShowTrayMenu() {
     DestroyMenu(menu);
 
     Settings& w = AppSettings();
-    if (cmd == ID_HELP) ShowHelp();
+    if (cmd == ID_SETTINGS) OpenSettings();
+    else if (cmd == ID_HELP) ShowHelp();
     else if (cmd >= ID_OUT_NEXT && cmd <= ID_OUT_DESKTOP) w.outputMode = cmd - ID_OUT_NEXT;
     else if (cmd >= ID_Q_BASE && cmd < ID_Q_BASE + std::size(kQualities)) w.quality = kQualities[cmd - ID_Q_BASE];
     else if (cmd == ID_STARTUP) {
@@ -254,7 +285,9 @@ LRESULT CALLBACK MainProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         case WM_HOOK_DRAG_END: wheel::OnDragEnded(); return 0;
         case WM_HOOK_MOUSEDOWN: wheel::OnGlobalMouseDown(POINT{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)}); return 0;
         case WM_HOOK_NAVKEY: wheel::OnNavKey((UINT)wp); return 0;
+        case WM_OPEN_SETTINGS: OpenSettings(); return 0;
         case WM_HOTKEY:
+            if (wp == kSettingsHotkeyId) OpenSettings();
             if (wp == kHotkeyId) {
                 auto files = ExplorerSelection();
                 if (files.empty()) {
@@ -276,6 +309,7 @@ LRESULT CALLBACK MainProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 Balloon(L"No se pudo completar", r->message, true);
             } else if (!r->outputs.empty()) {
                 g_lastOutputs = r->outputs;
+                if (!AppSettings().notifications) return 0;
                 std::wstring name = r->outputs.size() == 1 ? r->outputs[0].filename().wstring()
                                                            : std::to_wstring(r->outputs.size()) + L" archivos";
                 Balloon(L"Listo", name + (r->message.empty() ? L"" : L"\n" + r->message));
@@ -287,8 +321,7 @@ LRESULT CALLBACK MainProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 case WM_CONTEXTMENU:
                 case WM_RBUTTONUP: ShowTrayMenu(); break;
                 case NIN_SELECT:
-                case NIN_KEYSELECT:
-                case WM_LBUTTONUP: ShowTrayMenu(); break;
+                case NIN_KEYSELECT: OpenSettings(); break;
                 case NIN_BALLOONUSERCLICK:
                     if (!g_lastOutputs.empty()) RevealInExplorer(g_lastOutputs);
                     break;
@@ -375,6 +408,29 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
         Gdiplus::GdiplusShutdown(tok);
         return 0;
     }
+    if (argc >= 3 && !wcscmp(argv[1], L"--send")) {
+        // --send <files...>: opens the send window standalone; the server stops when it is closed.
+        SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        winrt::init_apartment(winrt::apartment_type::single_threaded);
+        OleInitialize(nullptr);
+        ULONG_PTR tok;
+        Gdiplus::GdiplusStartupInput in;
+        Gdiplus::GdiplusStartup(&tok, &in, nullptr);
+        LoadSettings();
+        std::vector<fs::path> files;
+        for (int i = 2; i < argc; ++i) files.push_back(fs::absolute(argv[i]));
+        POINT pt;
+        GetCursorPos(&pt);
+        OpenSendPanel(files, pt);
+        MSG m;
+        while (SendPanelsOpen() && GetMessageW(&m, nullptr, 0, 0) > 0) {
+            TranslateMessage(&m);
+            DispatchMessageW(&m);
+        }
+        CloseAllSendPanels();
+        Gdiplus::GdiplusShutdown(tok);
+        return 0;
+    }
     if (argc >= 6 && !wcscmp(argv[1], L"--preview")) {
         // --preview <mode 0-2> <hover> <out.png> <file> [result]
         SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
@@ -394,8 +450,16 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
 
     HANDLE mutex = CreateMutexW(nullptr, TRUE, L"Local\\FileTools.SingleInstance");
     if (GetLastError() == ERROR_ALREADY_EXISTS) {
-        MessageBoxW(nullptr, L"FileTools ya se está ejecutando (icono en la bandeja del sistema).", L"FileTools",
-                    MB_OK | MB_ICONINFORMATION);
+        // Launching it again (or "FileTools.exe --settings") opens the settings of the running copy.
+        if (HWND running = FindWindowW(kMainClass, nullptr)) {
+            DWORD pid = 0;
+            GetWindowThreadProcessId(running, &pid);
+            AllowSetForegroundWindow(pid);
+            PostMessageW(running, WM_OPEN_SETTINGS, 0, 0);
+        } else {
+            MessageBoxW(nullptr, L"FileTools ya se está ejecutando (icono en la bandeja del sistema).", L"FileTools",
+                        MB_OK | MB_ICONINFORMATION);
+        }
         return 0;
     }
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
@@ -426,8 +490,9 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
     AddTrayIcon();
     g_mouseHook = SetWindowsHookExW(WH_MOUSE_LL, MouseHook, inst, 0);
     g_keyHook = SetWindowsHookExW(WH_KEYBOARD_LL, KeyboardHook, inst, 0);
-    if (!RegisterHotKey(g_main, kHotkeyId, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_SPACE))
-        Balloon(L"FileTools", L"No se pudo registrar Ctrl+Alt+Espacio (lo usa otra aplicación).");
+    if (std::wstring error = RegisterHotkeys(); !error.empty())
+        Balloon(L"FileTools", error + L" Cámbialo en los ajustes.");
+    if (argc >= 2 && !wcscmp(argv[1], L"--settings")) OpenSettings();
 
     if (!AppSettings().welcomed) {
         AppSettings().welcomed = 1;
@@ -442,11 +507,13 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
         DispatchMessageW(&msg);
     }
 
-    UnregisterHotKey(g_main, kHotkeyId);
+    UnregisterHotkeys();
     UnhookWindowsHookEx(g_mouseHook);
     UnhookWindowsHookEx(g_keyHook);
     CloseAllFloatShelves();
     CloseAllInfoPanels();
+    CloseAllSendPanels();
+    CloseSettingsPanel();
     wheel::Destroy();
     DestroyIcon(g_icon);
     Gdiplus::GdiplusShutdown(gdiplusToken);

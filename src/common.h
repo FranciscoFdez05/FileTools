@@ -53,11 +53,23 @@ ProcessResult RunProcess(const fs::path& exe, const std::wstring& args, const fs
 fs::path FindProgram(const wchar_t* name);
 fs::path ExeDir();
 
+// Global shortcut: RegisterHotKey modifiers (MOD_CONTROL, MOD_ALT, MOD_SHIFT) in the high word, virtual key
+// in the low word.
+constexpr DWORD MakeHotkey(UINT mods, UINT vk) { return DWORD(mods) << 16 | (vk & 0xFFFF); }
+constexpr UINT HotkeyMods(DWORD hotkey) { return hotkey >> 16; }
+constexpr UINT HotkeyVk(DWORD hotkey) { return hotkey & 0xFFFF; }
+constexpr DWORD kDefaultWheelHotkey = MakeHotkey(MOD_CONTROL | MOD_ALT, VK_SPACE);
+constexpr DWORD kDefaultSettingsHotkey = MakeHotkey(MOD_CONTROL | MOD_ALT, 'S');
+std::wstring HotkeyName(DWORD hotkey);  // "Ctrl+Alt+Espacio"
+
 struct Settings {
     DWORD outputMode = 0;  // 0 = next to original, 1 = Downloads, 2 = Desktop
-    DWORD quality = 90;    // lossy encoders (JPG, WEBP, AVIF, HEIC)
+    DWORD quality = 100;   // lossy encoders (JPG, WEBP, AVIF, HEIC); 100 = lossless where the format allows it
     DWORD startWithWindows = 0;
     DWORD welcomed = 0;
+    DWORD notifications = 1;  // balloon when a background job finishes
+    DWORD wheelHotkey = kDefaultWheelHotkey;        // wheel on the Explorer selection
+    DWORD settingsHotkey = kDefaultSettingsHotkey;  // settings window
 };
 Settings& AppSettings();
 void LoadSettings();

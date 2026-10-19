@@ -195,6 +195,16 @@ std::vector<uint8_t> EncodeWic(const Image& src, ImgFmt fmt, const EncodeOpts& o
             v.vt = VT_R4;
             v.fltVal = std::clamp(opts.quality, 1, 100) / 100.0f;
             props->Write(1, &opt, &v);
+            if (fmt == ImgFmt::Jpg && opts.quality >= 100) {
+                // Maximum quality also keeps full colour resolution (no 4:2:0 chroma subsampling).
+                PROPBAG2 sub{};
+                sub.pstrName = const_cast<LPOLESTR>(L"JpegYCrCbSubsampling");
+                VARIANT sv;
+                VariantInit(&sv);
+                sv.vt = VT_UI1;
+                sv.bVal = WICJpegYCrCbSubsampling444;
+                props->Write(1, &sub, &sv);
+            }
         } else if (fmt == ImgFmt::Tiff) {
             PROPBAG2 opt{};
             opt.pstrName = const_cast<LPOLESTR>(L"TiffCompressionMethod");
@@ -255,7 +265,13 @@ std::vector<uint8_t> EncodeWic(const Image& src, ImgFmt fmt, const EncodeOpts& o
 
 #ifdef FT_HAVE_AVIF
 std::vector<uint8_t> EncodeAvif(const Image& img, int quality) {
-    avifImage* image = avifImageCreate(img.w, img.h, 8, AVIF_PIXEL_FORMAT_YUV420);
+    // 100 = lossless: full-resolution colour stored as RGB (identity matrix), so the pixels come back exactly.
+    bool lossless = quality >= 100;
+    avifImage* image = avifImageCreate(img.w, img.h, 8, lossless ? AVIF_PIXEL_FORMAT_YUV444 : AVIF_PIXEL_FORMAT_YUV420);
+    if (lossless) {
+        image->matrixCoefficients = AVIF_MATRIX_COEFFICIENTS_IDENTITY;
+        image->yuvRange = AVIF_RANGE_FULL;
+    }
     avifRGBImage rgb;
     avifRGBImageSetDefaults(&rgb, image);
     rgb.format = AVIF_RGB_FORMAT_BGRA;
@@ -267,8 +283,9 @@ std::vector<uint8_t> EncodeAvif(const Image& img, int quality) {
     avifEncoder* encoder = nullptr;
     std::vector<uint8_t> out;
     if (avifImageRGBToYUV(image, &rgb) == AVIF_RESULT_OK && (encoder = avifEncoderCreate())) {
-        encoder->quality = std::clamp(quality - 15, 1, 100);  // AVIF looks good at lower nominal quality
-        encoder->qualityAlpha = 90;
+        // AVIF looks good at lower nominal quality.
+        encoder->quality = lossless ? AVIF_QUALITY_LOSSLESS : std::clamp(quality - 15, 1, 100);
+        encoder->qualityAlpha = lossless ? AVIF_QUALITY_LOSSLESS : 90;
         encoder->speed = 7;
         encoder->maxThreads = 8;
         if (avifEncoderWrite(encoder, image, &output) == AVIF_RESULT_OK) out.assign(output.data, output.data + output.size);
@@ -331,6 +348,10 @@ bool CanEncode(ImgFmt f) {
 }
 
 Image LoadImageMemory(const uint8_t* data, size_t size) {
+#ifdef FT_HAVE_AVIF
+    // Windows' AV1 extension decodes AVIF without its transparency; libavif keeps it.
+    if (Image img; IsAvif(data, size) && DecodeAvif(data, size, img)) return img;
+#endif
     ComPtr<IWICStream> stream;
     ComPtr<IWICBitmapDecoder> decoder;
     HRESULT hr = Wic()->CreateStream(&stream);
@@ -357,7 +378,9 @@ std::vector<uint8_t> EncodeImage(const Image& img, ImgFmt fmt, const EncodeOpts&
 #ifdef FT_HAVE_WEBP
     if (fmt == ImgFmt::Webp) {
         uint8_t* out = nullptr;
-        size_t n = WebPEncodeBGRA(img.px.data(), img.w, img.h, img.w * 4, (float)opts.quality, &out);
+        size_t n = opts.quality >= 100  // 100 = lossless
+                       ? WebPEncodeLosslessBGRA(img.px.data(), img.w, img.h, img.w * 4, &out)
+                       : WebPEncodeBGRA(img.px.data(), img.w, img.h, img.w * 4, (float)opts.quality, &out);
         if (!n) Fail(L"No se pudo codificar WebP");
         std::vector<uint8_t> v(out, out + n);
         WebPFree(out);
