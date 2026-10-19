@@ -1,8 +1,15 @@
 <p align="center">
-  <img src="docs/icon.png" width="96" alt="FileTools">
+  <img src="docs/icon.png" alt="FileTools" width="128">
 </p>
 
-# FileTools
+<h1 align="center">FileTools</h1>
+
+<p align="center">
+  <a href="https://github.com/FranciscoFdez05/FileTools/releases/latest"><img src="https://img.shields.io/github/v/release/FranciscoFdez05/FileTools?label=versi%C3%B3n" alt="Última versión"></a>
+  <img src="https://img.shields.io/badge/C%2B%2B-20-00599C" alt="C++20">
+  <img src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4" alt="Windows 10 | 11">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue" alt="License: MIT"></a>
+</p>
 
 Convierte, edita y gestiona archivos arrastrándolos a una rueda de cristal. Aplicación nativa de Windows en C++20,
 todo en local y en un único `.exe`.
