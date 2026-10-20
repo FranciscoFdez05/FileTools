@@ -25,7 +25,7 @@ todo en local y en un único `.exe`.
 
 | Tipo | Convertir | Herramientas |
 |---|---|---|
-| **Imágenes** (JPG, PNG, WEBP, HEIC, TIFF, AVIF, BMP, GIF, ICO) | JPG, PNG, WEBP, HEIC, TIFF, AVIF, BMP, SVG (vectorizar), PDF, DOCX | Comprimir, limpiar metadatos, editar, anotar, fondo, quitar fondo, recortar, censurar datos sensibles (OCR), rotar, extraer texto (OCR) |
+| **Imágenes** (JPG, PNG, WEBP, HEIC, TIFF, AVIF, BMP, GIF, ICO, SVG) | JPG, PNG, WEBP, HEIC, TIFF, AVIF, BMP, SVG (vectorizar), PDF, DOCX | Comprimir, limpiar metadatos, editar, anotar, fondo, quitar fondo, recortar, escalar, censurar datos sensibles (OCR), rotar, extraer texto (OCR) |
 | **PDF** | DOCX, JPG, PNG, TXT, MD (todas las páginas, 300 ppp) | Comprimir, dividir, unir (PDF + imágenes), rotar, censurar, extraer texto, limpiar metadatos |
 | **Documentos** (TXT, MD, HTML, DOCX y cualquier archivo de texto) | DOCX, TXT, MD, HTML, PDF | Unir, contar palabras, hash, limpiar metadatos |
 | **Audio** | MP3, M4A, WAV, FLAC, OGG, OPUS, AIFF, WMA | Comprimir, normalizar, mono, quitar silencios, limpiar metadatos |
@@ -101,12 +101,17 @@ como privada.
 
 ### Editor de imágenes
 
-Las herramientas **Editar**, **Anotar**, **Recortar** y **Sin fondo** abren un editor integrado:
+Las herramientas **Editar**, **Anotar**, **Recortar**, **Escalar** y **Sin fondo** abren un editor integrado:
 
 - **Ajustes:** brillo, contraste, saturación, temperatura, nitidez, rotar y voltear.
 - **Anotar:** lápiz, resaltador, flecha, rectángulo, elipse y texto, con colores y grosor.
 - **Recortar:** libre o con proporción fija (original, 1:1, 4:3, 16:9, 9:16) y detección automática de bordes.
 - **Fondo:** quita el fondo con umbral y suavizado de borde ajustables.
+- **Tamaño:** agranda o reduce la imagen a mano arrastrando los tiradores del marco: las esquinas escalan
+  manteniendo la proporción y los lados estiran o encogen solo el ancho o el alto. Una línea discontinua marca el
+  tamaño original. También hay un deslizador (10 % a 400 %) y porcentajes fijos (25, 50, 75, 150, 200 y 400 %), y
+  se muestra el tamaño final en píxeles. Si hay recorte, se escala la zona recortada; el resultado no puede pasar
+  de 16384 px de lado. Si solo se escala, la copia se guarda como `nombre escalado.ext`.
 
 Guarda una copia (`nombre editado.ext`) a resolución completa; el original no se modifica.
 
@@ -223,7 +228,7 @@ request. Estructura del código:
 |---|---|
 | [src/main.cpp](src/main.cpp) | Bandeja, hooks globales de ratón/teclado, atajo, modo CLI |
 | [src/wheel.cpp](src/wheel.cpp) | Rueda radial: ventana layered, cristal, destino OLE, arrastrar el resultado |
-| [src/editor.cpp](src/editor.cpp) | Editor de imágenes (ajustes, anotaciones, recorte) |
+| [src/editor.cpp](src/editor.cpp) | Editor de imágenes (ajustes, anotaciones, recorte, escala) |
 | [src/actions.cpp](src/actions.cpp) | Catálogo de acciones por tipo de archivo y su ejecución |
 | [src/image.cpp](src/image.cpp) | Imágenes con WIC + libwebp/libavif |
 | [src/pdf.cpp](src/pdf.cpp) | Render de PDF (Windows.Data.Pdf) y escritor de PDF |
@@ -233,6 +238,8 @@ request. Estructura del código:
 | [src/media.cpp](src/media.cpp) | ffmpeg y tar.exe |
 | [src/bgremove.cpp](src/bgremove.cpp) | Quitar fondo: U²-Net con Windows ML y refinado del borde |
 | [src/vectorize.cpp](src/vectorize.cpp) | Vectorizar imágenes a SVG |
+| [src/svg.cpp](src/svg.cpp) | Rasterizar SVG con Direct2D |
+| [src/svgtext.cpp](src/svgtext.cpp) | Texto de los SVG (Direct2D no lo dibuja) con DirectWrite |
 | [src/fileinfo.cpp](src/fileinfo.cpp) | Hashes, metadatos (Windows y ExifTool) y limpieza de documentos de Office |
 | [src/infopanel.cpp](src/infopanel.cpp) | Ventana de hash y metadatos |
 | [src/sendpanel.cpp](src/sendpanel.cpp) | Ventana de enviar: QR, enlace, Bluetooth y Compartir |
