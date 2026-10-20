@@ -29,6 +29,8 @@ add_executable(FileTools WIN32
   src/editor.cpp
   src/bgremove.cpp
   src/vectorize.cpp
+  src/svg.cpp
+  src/svgtext.cpp
   src/fileinfo.cpp
   src/infopanel.cpp
   src/glass.cpp
@@ -45,7 +47,7 @@ target_compile_definitions(FileTools PRIVATE UNICODE _UNICODE NOMINMAX _WIN32_WI
   "FT_APP_VERSION=\"${PROJECT_VERSION}\"")
 target_compile_options(FileTools PRIVATE /utf-8 /W3 /permissive- /bigobj /EHsc /MP)
 target_link_libraries(FileTools PRIVATE
-  windowscodecs gdiplus shlwapi shcore ole32 oleaut32 uuid propsys windowsapp comctl32 bcrypt dwmapi uxtheme d2d1 dwrite ws2_32 iphlpapi)
+  windowscodecs gdiplus shlwapi shcore ole32 oleaut32 uuid propsys windowsapp comctl32 bcrypt dwmapi uxtheme d2d1 dwrite ws2_32 iphlpapi xmllite)
 
 find_package(WebP CONFIG QUIET)
 if(WebP_FOUND)

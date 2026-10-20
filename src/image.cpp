@@ -1,6 +1,7 @@
 #include "image.h"
 
 #include "gfx.h"
+#include "svg.h"
 
 #include <propvarutil.h>
 #include <wincodec.h>
@@ -348,6 +349,7 @@ bool CanEncode(ImgFmt f) {
 }
 
 Image LoadImageMemory(const uint8_t* data, size_t size) {
+    if (IsSvgData(data, size)) return RasterizeSvg(data, size);
 #ifdef FT_HAVE_AVIF
     // Windows' AV1 extension decodes AVIF without its transparency; libavif keeps it.
     if (Image img; IsAvif(data, size) && DecodeAvif(data, size, img)) return img;

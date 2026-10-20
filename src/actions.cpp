@@ -808,7 +808,7 @@ Kind KindOf(const fs::path& p) {
     std::wstring ext = ExtOf(p);
     ImgFmt fmt;
     if (ext == L"pdf") return Kind::Pdf;
-    if (ParseImgFmt(ext, fmt) || ext == L"ico") return Kind::Image;
+    if (ParseImgFmt(ext, fmt) || ext == L"ico" || ext == L"svg") return Kind::Image;
     if (IsDocumentExt(ext)) return Kind::Document;
     if (IsAudioExt(ext)) return Kind::Audio;
     if (IsVideoExt(ext)) return Kind::Video;
