@@ -1,5 +1,20 @@
 # Cambios
 
+## 1.2.0
+
+### Novedades
+
+- **Escalar imágenes** (rueda de herramientas de imagen, botón **ESCALAR**). Abre el editor en la nueva pestaña
+  **Tamaño**, que agranda o reduce la imagen a mano arrastrando los tiradores del marco: las esquinas escalan
+  manteniendo la proporción y los lados estiran o encogen solo el ancho o el alto. También tiene un deslizador
+  (10 % a 400 %) y porcentajes fijos (25, 50, 75, 150, 200 y 400 %), y muestra el tamaño final en píxeles. Se combina con el resto del editor: si hay recorte,
+  se escala la zona recortada.
+- **Convertir SVG a imagen.** Los archivos `.svg` se tratan como imágenes: se pueden pasar a JPG, PNG, WEBP, HEIC,
+  TIFF, AVIF, BMP, PDF y DOCX y usar con las herramientas de imagen. Se dibujan con Direct2D a 2048 px por el lado
+  largo (hasta 8192 si el SVG es mayor). El texto (`<text>`/`<tspan>`), que Direct2D descarta, se dibuja aparte
+  con DirectWrite respetando posición, transformaciones, color, fuente y alineación; las fuentes de Linux habituales
+  (Liberation, DejaVu) se sustituyen por sus equivalentes de Windows.
+
 ## 1.1.0
 
 ### Novedades
