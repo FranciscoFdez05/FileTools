@@ -26,9 +26,16 @@ constexpr UINT WM_COMMIT_TEXT = WM_APP + 40;
 constexpr UINT WM_CANCEL_TEXT = WM_APP + 41;
 constexpr UINT WM_MASK_READY = WM_APP + 42;
 constexpr wchar_t kGlyphWand = 0xE771;
+constexpr wchar_t kGlyphResize = 0xE740;
 
 // Layout at 96 DPI.
-constexpr float kToolbarH = 56, kPanelW = 272, kPad = 18;
+constexpr float kToolbarH = 56, kPanelW = 272, kPad = 18, kTabW = 110, kTabStep = 114;
+constexpr int kTabCount = 5;
+
+// Scale tab: percent range and presets. Larger outputs are refused on save, they would need gigabytes of memory.
+constexpr int kScaleMin = 10, kScaleMax = 400;
+constexpr int kScalePresets[] = {25, 50, 75, 150, 200, 400};
+constexpr uint32_t kMaxScaledDim = 16384;
 
 const Color kBg(255, 28, 28, 31), kCanvas(255, 20, 20, 22), kPanel(255, 36, 36, 40), kText(255, 238, 238, 242),
     kSub(255, 150, 150, 160), kBtn(255, 52, 52, 58), kBtnHot(255, 66, 66, 74), kAccent(255, 28, 132, 230),
@@ -46,6 +53,7 @@ enum Id {
     ID_TAB_ANNOTATE,
     ID_TAB_CROP,
     ID_TAB_BG,
+    ID_TAB_RESIZE,
     ID_CUTOUT,
     ID_RESET_BG,
     ID_CANCEL,
@@ -57,9 +65,11 @@ enum Id {
     ID_CLEAR,
     ID_AUTOCROP,
     ID_RESET_CROP,
+    ID_RESET_SCALE,
     ID_TOOL = 100,
     ID_COLOR = 200,
     ID_ASPECT = 300,
+    ID_SCALE = 400,
 };
 
 struct Aspect {
@@ -99,6 +109,7 @@ struct Slider {
     int min, max;
     bool adjust;  // affects the image preview
     int def = 0;  // double-click restores it
+    const wchar_t* unit = L"";
 };
 
 // Result of the background detection thread.
@@ -307,6 +318,7 @@ private:
         float sx = (c.Width - margin * 2) / orig_.w, sy = (c.Height - margin * 2) / orig_.h;
         scale_ = std::max(0.01f, std::min({sx, sy, 4.0f}));
         off_ = PointF(std::round(c.X + (c.Width - orig_.w * scale_) / 2), std::round(c.Y + (c.Height - orig_.h * scale_) / 2));
+        if (resizeHit_ < 0) FitResizeView();
         displayDirty_ = true;
     }
     PointF ToImage(float x, float y, bool clamp = true) const {
@@ -380,6 +392,79 @@ private:
     bool CropIsFull() const {
         return crop_.X < 0.5f && crop_.Y < 0.5f && std::abs(crop_.Width - orig_.w) < 0.5f &&
                std::abs(crop_.Height - orig_.h) < 0.5f;
+    }
+    // What gets scaled: the crop, or the whole image.
+    SizeF BaseSize() const {
+        return CropIsFull() ? SizeF(float(orig_.w), float(orig_.h)) : SizeF(crop_.Width, crop_.Height);
+    }
+    // Size of the saved image: the base size times the scale factors.
+    SIZE OutputSize() const {
+        SizeF b = BaseSize();
+        return SIZE{std::max(1L, std::lround(b.Width * scaleX_)), std::max(1L, std::lround(b.Height * scaleY_))};
+    }
+    bool Scaled() const {
+        SIZE o = OutputSize();
+        SizeF b = BaseSize();
+        return o.cx != std::lround(b.Width) || o.cy != std::lround(b.Height);
+    }
+    bool Stretched() const { return std::abs(scaleX_ - scaleY_) > 0.005f; }
+    bool OutputTooLarge() const {
+        SIZE o = OutputSize();
+        return uint32_t(o.cx) > kMaxScaledDim || uint32_t(o.cy) > kMaxScaledDim;
+    }
+    void SetScale(float pct) {
+        scalePct_ = int(std::lround(pct));
+        scaleX_ = scaleY_ = pct / 100.0f;
+    }
+    // Fits both the 100 % outline and the scaled frame in the canvas. Not called mid-drag,
+    // so the handle stays under the cursor; the view refits on release.
+    void FitResizeView() {
+        RectF c = CanvasRect();
+        SizeF b = BaseSize();
+        float margin = 28 * s_;
+        float w = b.Width * std::max(1.0f, scaleX_), h = b.Height * std::max(1.0f, scaleY_);
+        resizeView_ = std::max(0.001f, std::min({(c.Width - margin * 2) / w, (c.Height - margin * 2) / h, 4.0f}));
+    }
+    // The scaled frame stays centred in the canvas.
+    RectF ResizeFrame() const {
+        RectF c = CanvasRect();
+        SizeF b = BaseSize();
+        float w = b.Width * scaleX_ * resizeView_, h = b.Height * scaleY_ * resizeView_;
+        return RectF(c.X + (c.Width - w) / 2, c.Y + (c.Height - h) / 2, w, h);
+    }
+    int ResizeHit(float x, float y) const {
+        auto hs = Handles(ResizeFrame());
+        for (int i = 0; i < 8; ++i)
+            if (std::abs(hs[i].X - x) < 12 * s_ && std::abs(hs[i].Y - y) < 12 * s_) return i;
+        return -1;
+    }
+    // Corners (even handles) scale both axes by the same factor; sides stretch or shrink one axis.
+    void ResizeDrag(float x, float y) {
+        RectF c = CanvasRect();
+        SizeF b = BaseSize();
+        const float lo = kScaleMin / 100.0f, hi = kScaleMax / 100.0f;
+        // Centred frame: the cursor's distance to the centre is half the new size.
+        float sx = 2 * std::abs(x - (c.X + c.Width / 2)) / (b.Width * resizeView_);
+        float sy = 2 * std::abs(y - (c.Y + c.Height / 2)) / (b.Height * resizeView_);
+        if (resizeHit_ % 2 == 0) {
+            float k = std::max(sx / resizeStart_.X, sy / resizeStart_.Y);
+            float kMin = std::max(lo / resizeStart_.X, lo / resizeStart_.Y);
+            float kMax = std::max(kMin, std::min(hi / resizeStart_.X, hi / resizeStart_.Y));
+            k = std::clamp(k, kMin, kMax);
+            scaleX_ = resizeStart_.X * k;
+            scaleY_ = resizeStart_.Y * k;
+        } else if (resizeHit_ == 3 || resizeHit_ == 7) {
+            scaleX_ = std::clamp(sx, lo, hi);
+        } else {
+            scaleY_ = std::clamp(sy, lo, hi);
+        }
+        scalePct_ = std::clamp(int(std::lround(std::max(scaleX_, scaleY_) * 100)), kScaleMin, kScaleMax);
+        SyncScalePresets();
+    }
+    void SyncScalePresets() {
+        for (auto& b : buttons_)
+            if (b.id >= ID_SCALE && b.id < ID_SCALE + int(std::size(kScalePresets)))
+                b.active = !Stretched() && scalePct_ == kScalePresets[b.id - ID_SCALE];
     }
     void AutoCropNow() {
         uint32_t x, y, w, h;
@@ -456,6 +541,12 @@ private:
             MessageBoxW(hwnd_, L"Espera a que termine de detectar el sujeto.", L"FileTools", MB_OK | MB_ICONINFORMATION);
             return;
         }
+        if (OutputTooLarge()) {
+            std::wstring msg = L"La imagen escalada superaría " + std::to_wstring(kMaxScaledDim) +
+                               L" px de lado. Baja la escala.";
+            MessageBoxW(hwnd_, msg.c_str(), L"FileTools", MB_OK | MB_ICONINFORMATION);
+            return;
+        }
         HCURSOR old = SetCursor(LoadCursor(nullptr, IDC_WAIT));
         try {
             ::Image img = ApplyAdjust(orig_, adjust_);
@@ -474,9 +565,16 @@ private:
                 for (int r = 0; r < h; ++r) memcpy(c.Row(r), img.Row(y + r) + x * 4, size_t(w) * 4);
                 img = std::move(c);
             }
+            // Scaling goes last so annotations and the crop keep their original pixel positions.
+            bool scaled = Scaled();
+            if (scaled) {
+                SIZE o = OutputSize();
+                img = Resize(img, uint32_t(o.cx), uint32_t(o.cy));
+            }
+            bool onlyScaled = scaled && !cut && adjust_.Neutral() && shapes_.empty() && CropIsFull();
             ImgFmt fmt;
             if (cut || !ParseImgFmt(ExtOf(file_), fmt) || !CanEncode(fmt)) fmt = ImgFmt::Png;
-            fs::path out = OutPath(file_, ImgFmtExt(fmt), cut ? L"sin fondo" : L"editado");
+            fs::path out = OutPath(file_, ImgFmtExt(fmt), cut ? L"sin fondo" : onlyScaled ? L"escalado" : L"editado");
             EncodeOpts opts;
             opts.quality = 95;
             SaveImage(img, out, fmt, opts);
@@ -509,11 +607,13 @@ private:
         } tabs[] = {{ID_TAB_ADJUST, L"Ajustes", 0xE9E9, EditorMode::Adjust},
                     {ID_TAB_ANNOTATE, L"Anotar", 0xE70F, EditorMode::Annotate},
                     {ID_TAB_CROP, L"Recortar", 0xE7A8, EditorMode::Crop},
-                    {ID_TAB_BG, L"Fondo", kGlyphWand, EditorMode::Background}};
+                    {ID_TAB_BG, L"Fondo", kGlyphWand, EditorMode::Background},
+                    {ID_TAB_RESIZE, L"Tamaño", kGlyphResize, EditorMode::Resize}};
+        static_assert(std::size(tabs) == kTabCount);
         for (auto& t : tabs) {
-            Button b{RectF(tx, ty, 118 * s, th), t.label, t.glyph, t.id, mode_ == t.m};
+            Button b{RectF(tx, ty, kTabW * s, th), t.label, t.glyph, t.id, mode_ == t.m};
             buttons_.push_back(b);
-            tx += 122 * s;
+            tx += kTabStep * s;
         }
         buttons_.push_back({RectF(c.Width - kPad * s - 110 * s, ty, 110 * s, th), L"Guardar", 0xE74E, ID_SAVE, false, true});
         buttons_.push_back({RectF(c.Width - kPad * s - 228 * s, ty, 110 * s, th), L"Cancelar", 0, ID_CANCEL});
@@ -525,8 +625,9 @@ private:
             titles_.push_back({PointF(x, y), t});
             y += 26 * s;
         };
-        auto slider = [&](const wchar_t* label, int* v, int mn, int mx, bool adjust, int def = 0) {
-            sliders_.push_back({RectF(x, y, w, 46 * s), label, v, mn, mx, adjust, def});
+        auto slider = [&](const wchar_t* label, int* v, int mn, int mx, bool adjust, int def = 0,
+                          const wchar_t* unit = L"") {
+            sliders_.push_back({RectF(x, y, w, 46 * s), label, v, mn, mx, adjust, def, unit});
             y += 54 * s;
         };
         auto fullButton = [&](const wchar_t* label, wchar_t glyph, int id) {
@@ -584,6 +685,18 @@ private:
             slider(L"Umbral", &cutout_.threshold, 0, 100, true, 50);
             slider(L"Borde suave", &cutout_.softness, 0, 100, true, 50);
             fullButton(L"Restablecer", 0xE72C, ID_RESET_BG);
+            infoY_ = y + 8 * s;
+        } else if (mode_ == EditorMode::Resize) {
+            title(L"ESCALA");
+            slider(L"Escala", &scalePct_, kScaleMin, kScaleMax, false, 100, L" %");
+            float half = (w - 8 * s) / 2;
+            for (int i = 0; i < int(std::size(kScalePresets)); ++i) {
+                RectF r(x + (i % 2) * (half + 8 * s), y + (i / 2) * 44 * s, half, 36 * s);
+                std::wstring label = std::to_wstring(kScalePresets[i]) + L" %";
+                buttons_.push_back({r, label, 0, ID_SCALE + i, !Stretched() && scalePct_ == kScalePresets[i]});
+            }
+            y += 140 * s;
+            fullButton(L"Restablecer", 0xE72C, ID_RESET_SCALE);
             infoY_ = y + 8 * s;
         } else {
             title(L"PROPORCIÓN");
@@ -644,6 +757,11 @@ private:
         g.IntersectClip(c);
         SolidBrush canvas(kCanvas);
         g.FillRectangle(&canvas, c);
+        if (mode_ == EditorMode::Resize) {
+            PaintResize(g);
+            g.Restore(outer);
+            return;
+        }
         RectF img(off_.X, off_.Y, orig_.w * scale_, orig_.h * scale_);
         EnsureDisplay();
         g.SetInterpolationMode(InterpolationModeNearestNeighbor);
@@ -694,6 +812,28 @@ private:
             }
         }
         g.Restore(outer);
+    }
+
+    // Tamaño tab: the (cropped) image stretched into the output frame, over a dashed 100 % outline.
+    void PaintResize(Graphics& g) {
+        EnsureDisplay();
+        RectF frame = ResizeFrame();
+        RectF src(crop_.X * scale_, crop_.Y * scale_, crop_.Width * scale_, crop_.Height * scale_);
+        ImageAttributes attrs;
+        attrs.SetWrapMode(WrapModeTileFlipXY);  // no faded edges when stretching
+        g.SetInterpolationMode(InterpolationModeHighQualityBilinear);
+        g.DrawImage(display_.get(), frame, src.X, src.Y, src.Width, src.Height, UnitPixel, &attrs);
+
+        SizeF b = BaseSize();
+        RectF c = CanvasRect();
+        float w = b.Width * resizeView_, h = b.Height * resizeView_;
+        Pen outline(Color(150, 255, 255, 255), 1.0f * s_);
+        outline.SetDashStyle(DashStyleDash);
+        g.DrawRectangle(&outline, RectF(c.X + (c.Width - w) / 2, c.Y + (c.Height - h) / 2, w, h));
+        Pen border(Color(255, 255, 255, 255), 1.5f * s_);
+        g.DrawRectangle(&border, frame);
+        SolidBrush handle(Color(255, 255, 255, 255));
+        for (const auto& p : Handles(frame)) g.FillEllipse(&handle, p.X - 6 * s_, p.Y - 6 * s_, 12 * s_, 12 * s_);
     }
 
     std::vector<PointF> Handles(const RectF& r) const {
@@ -751,7 +891,7 @@ private:
         Font f(gfx::TextFamily(), 12 * s_, FontStyleRegular, UnitPixel);
         std::wstring info = file_.filename().wstring() + L"  ·  " + std::to_wstring(orig_.w) + L" × " +
                             std::to_wstring(orig_.h);
-        float left = kPad * s_ + 4 * 122 * s_, right = c.Width - kPad * s_ - 240 * s_;
+        float left = kPad * s_ + kTabCount * kTabStep * s_, right = c.Width - kPad * s_ - 240 * s_;
         if (right - left > 80 * s_) gfx::DrawCentered(g, info, f, sub, RectF(left, 0, right - left, kToolbarH * s_));
     }
 
@@ -767,7 +907,7 @@ private:
         Font f(gfx::TextFamily(), 12.5f * s_, FontStyleRegular, UnitPixel);
         for (const auto& sl : sliders_) {
             g.DrawString(sl.label, -1, &f, PointF(sl.r.X, sl.r.Y), &text);
-            std::wstring v = std::to_wstring(*sl.value);
+            std::wstring v = std::to_wstring(*sl.value) + sl.unit;
             StringFormat right;
             right.SetAlignment(StringAlignmentFar);
             g.DrawString(v.c_str(), -1, &f, RectF(sl.r.X, sl.r.Y, sl.r.Width, 20 * s_), &right, &sub);
@@ -800,6 +940,20 @@ private:
                                 std::to_wstring(int(std::lround(crop_.Height))) + L" px";
             g.DrawString(size.c_str(), -1, &f, PointF(p.X + kPad * s_, infoY_), &sub);
         }
+        if (mode_ == EditorMode::Resize) {
+            SIZE o = OutputSize();
+            std::wstring info = std::to_wstring(o.cx) + L" × " + std::to_wstring(o.cy) + L" px";
+            if (Stretched())
+                info += L"\nAncho " + std::to_wstring(std::lround(scaleX_ * 100)) + L" % · alto " +
+                        std::to_wstring(std::lround(scaleY_ * 100)) + L" %";
+            info += L"\n\nArrastra una esquina para escalar o un lado para estirar o encoger solo el ancho o el alto. "
+                    L"La línea discontinua marca el tamaño original.";
+            if (!CropIsFull()) info += L"\nSe escala la zona recortada.";
+            if (OutputTooLarge()) info += L"\nDemasiado grande: máximo " + std::to_wstring(kMaxScaledDim) + L" px de lado.";
+            RectF box(p.X + kPad * s_, infoY_, p.Width - kPad * 2 * s_, p.Y + p.Height - infoY_ - kPad * s_);
+            SolidBrush tone(OutputTooLarge() ? Color(255, 240, 110, 100) : kSub);
+            g.DrawString(info.c_str(), -1, &f, box, nullptr, &tone);
+        }
     }
 
     // --- interaction -------------------------------------------------------------
@@ -826,6 +980,14 @@ private:
         if (v == *sl.value) return;
         *sl.value = v;
         if (sl.adjust) ScheduleAdjust();
+        if (sl.value == &scalePct_) {
+            // The slider is proportional: it also undoes a stretch. Presets are synced in place,
+            // without a full Layout() on every drag step.
+            SetScale(float(v));
+            FitResizeView();
+            SyncScalePresets();
+            InvalidateCanvas();
+        }
         RectF p = PanelRect();
         RECT r{LONG(p.X), LONG(p.Y), LONG(p.X + p.Width), LONG(p.Y + p.Height)};
         InvalidateRect(hwnd_, &r, FALSE);
@@ -836,11 +998,13 @@ private:
     }
 
     void OnButton(int id) {
-        if (id == ID_TAB_ADJUST || id == ID_TAB_ANNOTATE || id == ID_TAB_CROP || id == ID_TAB_BG) {
+        if (id == ID_TAB_ADJUST || id == ID_TAB_ANNOTATE || id == ID_TAB_CROP || id == ID_TAB_BG ||
+            id == ID_TAB_RESIZE) {
             CommitText();
             mode_ = id == ID_TAB_ADJUST     ? EditorMode::Adjust
                     : id == ID_TAB_ANNOTATE ? EditorMode::Annotate
                     : id == ID_TAB_CROP     ? EditorMode::Crop
+                    : id == ID_TAB_RESIZE   ? EditorMode::Resize
                                             : EditorMode::Background;
             if (id == ID_TAB_BG && !cutoutOn_ && bgError_.empty()) {
                 EnableCutout();
@@ -881,6 +1045,10 @@ private:
         } else if (id >= ID_ASPECT && id < ID_ASPECT + 6) {
             aspect_ = id - ID_ASPECT;
             ApplyAspect();
+        } else if (id >= ID_SCALE && id < ID_SCALE + int(std::size(kScalePresets))) {
+            SetScale(float(kScalePresets[id - ID_SCALE]));
+        } else if (id == ID_RESET_SCALE) {
+            SetScale(100);
         }
         Layout();
     }
@@ -1013,7 +1181,8 @@ private:
             case WM_SIZE: Layout(); return 0;
             case WM_GETMINMAXINFO: {
                 auto* mm = reinterpret_cast<MINMAXINFO*>(lp);
-                mm->ptMinTrackSize = {LONG(760 * s_), LONG(560 * s_)};
+                // Wide enough for the five tabs plus Cancelar/Guardar without overlapping.
+                mm->ptMinTrackSize = {LONG(840 * s_), LONG(560 * s_)};
                 return 0;
             }
             case WM_DPICHANGED: {
@@ -1043,12 +1212,15 @@ private:
                     LPCWSTR cur = IDC_ARROW;
                     if (InCanvas(float(pt.x), float(pt.y))) {
                         if (mode_ == EditorMode::Annotate) cur = tool_ == Tool::Text ? IDC_IBEAM : IDC_CROSS;
-                        else if (mode_ == EditorMode::Crop) {
+                        static const LPCWSTR cursors[] = {IDC_SIZENWSE, IDC_SIZENS, IDC_SIZENESW, IDC_SIZEWE,
+                                                          IDC_SIZENWSE, IDC_SIZENS, IDC_SIZENESW, IDC_SIZEWE,
+                                                          IDC_SIZEALL,  IDC_CROSS};
+                        if (mode_ == EditorMode::Crop) {
                             int h = CropHit(float(pt.x), float(pt.y));
-                            static const LPCWSTR cursors[] = {IDC_SIZENWSE, IDC_SIZENS, IDC_SIZENESW, IDC_SIZEWE,
-                                                              IDC_SIZENWSE, IDC_SIZENS, IDC_SIZENESW, IDC_SIZEWE,
-                                                              IDC_SIZEALL,  IDC_CROSS};
                             cur = cursors[h];
+                        } else if (mode_ == EditorMode::Resize) {
+                            int h = resizeHit_ >= 0 ? resizeHit_ : ResizeHit(float(pt.x), float(pt.y));
+                            if (h >= 0) cur = cursors[h];
                         }
                     } else if (ButtonAt(float(pt.x), float(pt.y)) || SliderAt(float(pt.x), float(pt.y)) >= 0) {
                         cur = IDC_HAND;
@@ -1073,6 +1245,11 @@ private:
                 if (cropHit_ >= 0) {
                     CropDrag(ToImage(x, y));
                     InvalidateRect(hwnd_, nullptr, FALSE);  // canvas + size label
+                    return 0;
+                }
+                if (resizeHit_ >= 0) {
+                    ResizeDrag(x, y);
+                    InvalidateRect(hwnd_, nullptr, FALSE);  // canvas + slider + size label
                     return 0;
                 }
                 int hot = ButtonAt(x, y);
@@ -1118,6 +1295,12 @@ private:
                     dragStart_ = ToImage(x, y);
                     cropStart_ = crop_;
                     SetCapture(hwnd_);
+                } else if (mode_ == EditorMode::Resize) {
+                    resizeHit_ = ResizeHit(x, y);
+                    if (resizeHit_ >= 0) {
+                        resizeStart_ = PointF(scaleX_, scaleY_);
+                        SetCapture(hwnd_);
+                    }
                 }
                 return 0;
             }
@@ -1140,6 +1323,11 @@ private:
                 if (cropHit_ >= 0) {
                     cropHit_ = -1;
                     InvalidateRect(hwnd_, nullptr, FALSE);
+                    return 0;
+                }
+                if (resizeHit_ >= 0) {
+                    resizeHit_ = -1;
+                    Layout();  // refit the view to the new size and refresh the presets
                     return 0;
                 }
                 int id = ButtonAt(x, y);
@@ -1197,6 +1385,11 @@ private:
     PointF dragStart_;
     int cropHit_ = -1;
     int aspect_ = 0;
+    int scalePct_ = 100;          // slider value, proportional scale
+    float scaleX_ = 1, scaleY_ = 1;  // actual factors: differ when a side handle stretched one axis
+    float resizeView_ = 1;           // screen pixels per output pixel in the Tamaño tab
+    int resizeHit_ = -1;             // handle being dragged (see Handles()), -1 = none
+    PointF resizeStart_;             // scaleX_/scaleY_ when the drag began
 
     std::shared_ptr<SubjectMask> mask_;
     CutoutSettings cutout_;

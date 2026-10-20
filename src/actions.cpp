@@ -55,6 +55,7 @@ constexpr wchar_t kGlyphInfo = 0xE946;
 constexpr wchar_t kGlyphErase = 0xE75C;
 constexpr wchar_t kGlyphWand = 0xE771;
 constexpr wchar_t kGlyphQr = 0xED14;
+constexpr wchar_t kGlyphResize = 0xE740;
 
 std::wstring CanonicalExt(const fs::path& p) {
     std::wstring e = ExtOf(p);
@@ -864,7 +865,7 @@ std::vector<ActionDef> ActionsFor(Mode mode, const std::vector<fs::path>& files)
                 return {{"tool:compress", L"COMPRIMIR", kGlyphCompress}, {"tool:metadata", L"LIMPIAR", kGlyphErase},
                         {"tool:edit", L"EDITAR", kGlyphSliders, true},    {"tool:annotate", L"ANOTAR", kGlyphPen, true},
                         {"tool:background", L"FONDO", kGlyphPicture},     {"tool:nobg", L"SIN FONDO", kGlyphWand, true},
-                        {"tool:crop", L"RECORTAR", kGlyphCrop, true},
+                        {"tool:crop", L"RECORTAR", kGlyphCrop, true},     {"tool:resize", L"ESCALAR", kGlyphResize, true},
                         {"tool:redact", L"CENSURAR", kGlyphHide},         {"tool:rotate", L"ROTAR", kGlyphRotate},
                         {"tool:ocr", L"TEXTO", kGlyphText}};
             case Kind::Pdf:
@@ -957,9 +958,10 @@ JobResult RunUiAction(const std::string& id, const std::vector<fs::path>& files,
         } else if (id == "tool:nobg") {
             for (const auto& f : files) OpenEditor(f, EditorMode::Background);
             r.hide = true;
-        } else if (id == "tool:edit" || id == "tool:annotate" || id == "tool:crop") {
+        } else if (id == "tool:edit" || id == "tool:annotate" || id == "tool:crop" || id == "tool:resize") {
             EditorMode mode = id == "tool:edit" ? EditorMode::Adjust
                               : id == "tool:annotate" ? EditorMode::Annotate
+                              : id == "tool:resize"   ? EditorMode::Resize
                                                       : EditorMode::Crop;
             for (const auto& f : files) OpenEditor(f, mode);
             r.hide = true;
