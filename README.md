@@ -99,6 +99,32 @@ como privada.
   de cada zona y lo convierte en líneas y curvas. Ideal para logos, iconos, dibujos y capturas; las fotos quedan
   con aspecto de póster. La transparencia se conserva.
 
+### Lanzadera: capturas de pantalla y programas
+
+**Ctrl+Mayús** (pulsar y soltar las dos teclas, sin otra entre medias) abre la **Lanzadera**, una rueda que no
+necesita archivos. Ctrl+Mayús sigue funcionando en otros atajos (Ctrl+Mayús+T, Ctrl+Mayús+clic…):
+solo abre la rueda si se sueltan sin pulsar nada más, y no durante un arrastre. Si Windows usa Ctrl+Mayús para
+cambiar la distribución del teclado, ocurrirán las dos cosas.
+
+- **Región:** congela la pantalla (todos los monitores) y arrastras para elegir la zona; un clic sin arrastrar
+  elige la ventana que hay debajo.
+- **Ventana:** empieza con la ventana que hay bajo el cursor ya seleccionada.
+- **Pantalla:** empieza con el monitor completo seleccionado.
+
+Antes de confirmar puedes ajustar la selección: los tiradores de esquinas y lados la agrandan o reducen por
+cualquier lado, arrastrar por dentro la mueve y las flechas la desplazan 1 px (10 con Mayús; con Ctrl mueven el
+borde derecho o inferior). Encima se ven las dimensiones en píxeles y debajo una barra con:
+
+- **Copiar** (Ctrl+C): al portapapeles.
+- **Guardar** (Ctrl+S): PNG `Captura AAAA-MM-DD HH.MM.SS.png` en la carpeta de capturas de Windows
+  (`Imágenes\Capturas de pantalla`), o en Descargas o el Escritorio si así está en los ajustes.
+- **Editar** (Ctrl+E): lo guarda y lo abre en el editor de imágenes para anotarlo.
+- **Intro** o doble clic dentro copia y guarda a la vez. **Esc** o clic derecho cancela.
+
+**Añadir** pone en la rueda un programa (`.exe` o acceso directo; el diálogo se abre en la carpeta de programas
+del menú Inicio), hasta siete. Al elegirlo se abre. Con clic derecho sobre un programa se puede quitar o abrir su
+ubicación.
+
 ### Editor de imágenes
 
 Las herramientas **Editar**, **Anotar**, **Recortar**, **Escalar** y **Sin fondo** abren un editor integrado:
@@ -176,8 +202,8 @@ Cada push a `main` se compila en GitHub Actions; al publicar un tag `v*` se crea
    **clic** para verlo en el Explorador o suéltalo sobre otra opción para encadenar operaciones.
 
 Durante el arrastre puedes pulsar otra tecla para cambiar de rueda. Con archivos seleccionados en el Explorador,
-**Ctrl+Alt+Espacio** abre la rueda con el teclado (flechas, Intro, Tab, Esc). El atajo se puede cambiar en los
-ajustes.
+**Ctrl+Alt+Espacio** abre la rueda con el teclado (flechas, Intro, Tab, Esc). **Ctrl+Mayús** abre la Lanzadera
+(capturas de pantalla y programas, ver arriba). Los atajos se pueden cambiar en los ajustes.
 
 ### Ajustes
 
@@ -190,9 +216,10 @@ ajustes.
   **Comprimir** usa siempre su propia calidad, pensada para reducir tamaño.
 - Iniciar con Windows y avisar cuando termina una tarea en segundo plano (los errores se avisan siempre).
 - Estado de ffmpeg y ExifTool, con **Elegir…** para indicar dónde está `exiftool.exe`.
-- Los atajos de teclado (rueda y ajustes): haz clic en uno y pulsa la nueva combinación, que debe llevar Ctrl o
-  Alt (Esc cancela). Si Windows u otra aplicación ya la usa, se mantiene la anterior. **Restablecer** vuelve al
-  atajo por defecto (Ctrl+Alt+Espacio y Ctrl+Alt+S).
+- Los atajos de teclado (rueda, ajustes y Lanzadera): haz clic en uno y pulsa la nueva combinación, que debe
+  llevar Ctrl o Alt (Esc cancela). Si Windows u otra aplicación ya la usa, se mantiene la anterior.
+  **Restablecer** vuelve al atajo por defecto (Ctrl+Alt+Espacio, Ctrl+Alt+S y Ctrl+Mayús). Si la
+  Lanzadera pasa a otro atajo, Ctrl+Mayús deja de abrirla.
 - **Cerrar tarjetas flotantes** y **Salir de FileTools**.
 
 El clic derecho en el icono de la bandeja abre el menú rápido con las mismas opciones.
@@ -245,6 +272,8 @@ request. Estructura del código:
 | [src/sendpanel.cpp](src/sendpanel.cpp) | Ventana de enviar: QR, enlace, Bluetooth y Compartir |
 | [src/fileserver.cpp](src/fileserver.cpp) | Servidor HTTP para descargar los archivos desde la red local |
 | [src/qrcode.cpp](src/qrcode.cpp) | Generador de códigos QR |
+| [src/capture.cpp](src/capture.cpp) | Capturas de pantalla: selección ajustable, copiar, guardar y editar |
+| [src/launcher.cpp](src/launcher.cpp) | Programas de la Lanzadera |
 | [src/settingspanel.cpp](src/settingspanel.cpp) | Ventana de ajustes |
 | [src/glass.cpp](src/glass.cpp) | Estilo de cristal compartido por las ventanas |
 | [src/shellutil.cpp](src/shellutil.cpp) | Miniaturas, portapapeles, Explorador, compartir |

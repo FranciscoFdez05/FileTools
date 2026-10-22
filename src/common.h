@@ -60,6 +60,10 @@ constexpr UINT HotkeyMods(DWORD hotkey) { return hotkey >> 16; }
 constexpr UINT HotkeyVk(DWORD hotkey) { return hotkey & 0xFFFF; }
 constexpr DWORD kDefaultWheelHotkey = MakeHotkey(MOD_CONTROL | MOD_ALT, VK_SPACE);
 constexpr DWORD kDefaultSettingsHotkey = MakeHotkey(MOD_CONTROL | MOD_ALT, 'S');
+// Ctrl+Shift with no key: pressed and released on their own (detected by the keyboard hook, since
+// RegisterHotKey needs a key).
+constexpr DWORD kLauncherTapHotkey = MakeHotkey(MOD_CONTROL | MOD_SHIFT, 0);
+constexpr DWORD kDefaultLauncherHotkey = kLauncherTapHotkey;
 std::wstring HotkeyName(DWORD hotkey);  // "Ctrl+Alt+Espacio"
 
 struct Settings {
@@ -70,6 +74,7 @@ struct Settings {
     DWORD notifications = 1;  // balloon when a background job finishes
     DWORD wheelHotkey = kDefaultWheelHotkey;        // wheel on the Explorer selection
     DWORD settingsHotkey = kDefaultSettingsHotkey;  // settings window
+    DWORD launcherHotkey = kDefaultLauncherHotkey;  // launcher wheel (captures and programs)
 };
 Settings& AppSettings();
 void LoadSettings();

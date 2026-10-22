@@ -1,5 +1,7 @@
 #include "shellutil.h"
 
+#include "image.h"
+
 #include <exdisp.h>
 #include <shlguid.h>
 #include <shlobj.h>
@@ -200,6 +202,41 @@ bool CopyTextToClipboard(HWND hwnd, const std::wstring& text) {
     return true;
 }
 
+bool CopyImageToClipboard(HWND hwnd, const Image& img) {
+    size_t pixels = size_t(img.w) * img.h * 4;
+    HGLOBAL dib = GlobalAlloc(GMEM_MOVEABLE, sizeof(BITMAPINFOHEADER) + pixels);
+    if (!dib) return false;
+    auto* header = static_cast<BITMAPINFOHEADER*>(GlobalLock(dib));
+    *header = {sizeof(BITMAPINFOHEADER), LONG(img.w), LONG(img.h), 1, 32, BI_RGB};
+    // CF_DIB rows run bottom-up.
+    auto* rows = reinterpret_cast<uint8_t*>(header + 1);
+    for (uint32_t y = 0; y < img.h; ++y) memcpy(rows + size_t(img.h - 1 - y) * img.w * 4, img.Row(y), size_t(img.w) * 4);
+    GlobalUnlock(dib);
+
+    HGLOBAL png = nullptr;
+    try {
+        std::vector<uint8_t> bytes = EncodeImage(img, ImgFmt::Png);
+        png = GlobalAlloc(GMEM_MOVEABLE, bytes.size());
+        if (png) {
+            memcpy(GlobalLock(png), bytes.data(), bytes.size());
+            GlobalUnlock(png);
+        }
+    } catch (const AppError&) {
+        // The bitmap alone still pastes everywhere; PNG is only a nicety.
+    }
+
+    if (!OpenClipboardRetry(hwnd)) {
+        GlobalFree(dib);
+        if (png) GlobalFree(png);
+        return false;
+    }
+    EmptyClipboard();
+    SetClipboardData(CF_DIB, dib);
+    if (png) SetClipboardData(RegisterClipboardFormatW(L"PNG"), png);
+    CloseClipboard();
+    return true;
+}
+
 static std::vector<fs::path> SelectionFromView(IShellBrowser* browser) {
     std::vector<fs::path> files;
     ComPtr<IShellView> view;
@@ -274,6 +311,28 @@ bool PickFolder(HWND owner, fs::path& out) {
     dlg->GetOptions(&opts);
     dlg->SetOptions(opts | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM);
     dlg->SetTitle(L"Mover a…");
+    if (FAILED(dlg->Show(owner))) return false;
+    ComPtr<IShellItem> item;
+    PWSTR path = nullptr;
+    if (FAILED(dlg->GetResult(&item)) || FAILED(item->GetDisplayName(SIGDN_FILESYSPATH, &path))) return false;
+    out = path;
+    CoTaskMemFree(path);
+    return true;
+}
+
+bool PickProgram(HWND owner, fs::path& out) {
+    ComPtr<IFileOpenDialog> dlg;
+    if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dlg)))) return false;
+    DWORD opts = 0;
+    dlg->GetOptions(&opts);
+    // Keep shortcuts as they are: they carry the arguments and working folder the program needs.
+    dlg->SetOptions(opts | FOS_FORCEFILESYSTEM | FOS_FILEMUSTEXIST | FOS_NODEREFERENCELINKS);
+    dlg->SetTitle(L"Añadir a la Lanzadera");
+    COMDLG_FILTERSPEC filter[] = {{L"Programas y accesos directos", L"*.exe;*.lnk"}};
+    dlg->SetFileTypes(1, filter);
+    ComPtr<IShellItem> start;
+    if (SUCCEEDED(SHGetKnownFolderItem(FOLDERID_CommonPrograms, KF_FLAG_DEFAULT, nullptr, IID_PPV_ARGS(&start))))
+        dlg->SetFolder(start.Get());
     if (FAILED(dlg->Show(owner))) return false;
     ComPtr<IShellItem> item;
     PWSTR path = nullptr;

@@ -1,11 +1,13 @@
 #include "actions.h"
 
 #include "bgremove.h"
+#include "capture.h"
 #include "docs.h"
 #include "editor.h"
 #include "fileinfo.h"
 #include "floatshelf.h"
 #include "image.h"
+#include "launcher.h"
 #include "media.h"
 #include "ocr.h"
 #include "pdf.h"
@@ -56,6 +58,10 @@ constexpr wchar_t kGlyphErase = 0xE75C;
 constexpr wchar_t kGlyphWand = 0xE771;
 constexpr wchar_t kGlyphQr = 0xED14;
 constexpr wchar_t kGlyphResize = 0xE740;
+constexpr wchar_t kGlyphScreenshot = 0xE7C4;
+constexpr wchar_t kGlyphWindow = 0xE737;
+constexpr wchar_t kGlyphDesktop = 0xE7F4;
+constexpr wchar_t kGlyphAdd = 0xE710;
 
 std::wstring CanonicalExt(const fs::path& p) {
     std::wstring e = ExtOf(p);
@@ -823,11 +829,24 @@ const wchar_t* ModeName(Mode m) {
         case Mode::Convert: return L"CONVERTIR";
         case Mode::Tools: return L"HERRAMIENTAS";
         case Mode::Actions: return L"ACCIONES";
+        case Mode::Launcher: return L"LANZADERA";
     }
     return L"";
 }
 
+static std::vector<ActionDef> LauncherActions() {
+    std::vector<ActionDef> out = {{"cap:region", L"REGIÓN", kGlyphScreenshot, true},
+                                  {"cap:window", L"VENTANA", kGlyphWindow, true},
+                                  {"cap:screen", L"PANTALLA", kGlyphDesktop, true}};
+    std::vector<LauncherApp> apps = LauncherApps();
+    for (size_t i = 0; i < apps.size(); ++i)
+        out.push_back({"app:" + std::to_string(i), apps[i].name, 0, true, apps[i].path});
+    if (apps.size() < kMaxLauncherApps) out.push_back({"app:add", L"AÑADIR", kGlyphAdd, true});
+    return out;
+}
+
 std::vector<ActionDef> ActionsFor(Mode mode, const std::vector<fs::path>& files) {
+    if (mode == Mode::Launcher) return LauncherActions();
     if (files.empty()) return {};
     if (mode == Mode::Actions) {
         return {{"act:copy", L"COPIAR", kGlyphCopy, true},       {"act:path", L"RUTA", kGlyphLink, true},
@@ -951,6 +970,18 @@ JobResult RunUiAction(const std::string& id, const std::vector<fs::path>& files,
             r.message = L"Compartiendo…";
         } else if (id == "act:openwith") {
             OpenWithDialog(owner, files[0]);
+            r.hide = true;
+        } else if (id.starts_with("cap:")) {
+            capture::Start(id == "cap:window"   ? capture::Target::Window
+                           : id == "cap:screen" ? capture::Target::Screen
+                                                : capture::Target::Region,
+                           anchor);
+            r.hide = true;
+        } else if (id == "app:add") {
+            AddLauncherApp(owner);
+            r.hide = true;
+        } else if (id.starts_with("app:")) {
+            RunLauncherApp(std::stoul(id.substr(4)));
             r.hide = true;
         } else if (id == "tool:send") {
             OpenSendPanel(files, anchor);

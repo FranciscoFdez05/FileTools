@@ -44,12 +44,23 @@ enum : int {
     HIT_KEY = 500,    // + shortcut index: click to type a new one
     BTN_RESET = 510,  // + shortcut index: back to the default
 };
-constexpr int kShortcuts = 2;  // 0 = wheel, 1 = settings
-constexpr DWORD kDefaultHotkeys[kShortcuts] = {kDefaultWheelHotkey, kDefaultSettingsHotkey};
+constexpr int kShortcuts = 3;  // 0 = wheel, 1 = settings, 2 = launcher
+constexpr DWORD kDefaultHotkeys[kShortcuts] = {kDefaultWheelHotkey, kDefaultSettingsHotkey, kDefaultLauncherHotkey};
 constexpr const wchar_t* kShortcutUse[kShortcuts] = {L"Abrir la rueda con la selección del Explorador",
-                                                     L"Abrir estos ajustes"};
+                                                     L"Abrir estos ajustes",
+                                                     L"Abrir la Lanzadera (capturas y programas)"};
 
-DWORD& HotkeyOf(int i) { return i == 0 ? AppSettings().wheelHotkey : AppSettings().settingsHotkey; }
+DWORD& HotkeyOf(int i) {
+    Settings& s = AppSettings();
+    return i == 0 ? s.wheelHotkey : i == 1 ? s.settingsHotkey : s.launcherHotkey;
+}
+
+// Index of the other shortcut already set to `hotkey`, or -1.
+int ShortcutUsing(DWORD hotkey, int except) {
+    for (int i = 0; i < kShortcuts; ++i)
+        if (i != except && HotkeyOf(i) == hotkey) return i;
+    return -1;
+}
 
 // "Ctrl+Alt+" while the user is still holding the modifiers.
 std::wstring ModifiersName(UINT mods) {
@@ -437,9 +448,9 @@ private:
             SetStatus(error.empty() ? L"Sin cambios" : error, error.empty() ? Tone::Normal : Tone::Bad);
             return;
         }
-        if (hotkey == HotkeyOf(1 - i)) {
+        if (int other = ShortcutUsing(hotkey, i); other >= 0) {
             if (actions_.applyHotkeys) actions_.applyHotkeys();
-            SetStatus(HotkeyName(hotkey) + L" ya se usa para: " + kShortcutUse[1 - i], Tone::Bad);
+            SetStatus(HotkeyName(hotkey) + L" ya se usa para: " + kShortcutUse[other], Tone::Bad);
             return;
         }
         SetHotkey(i, hotkey);
@@ -478,8 +489,8 @@ private:
         if (capturing_ >= 0) EndCapture(0);  // clicking elsewhere cancels
         if (id >= BTN_RESET && id < BTN_RESET + kShortcuts) {
             int i = id - BTN_RESET;
-            if (kDefaultHotkeys[i] == HotkeyOf(1 - i)) {
-                SetStatus(HotkeyName(kDefaultHotkeys[i]) + L" ya se usa para: " + kShortcutUse[1 - i], Tone::Bad);
+            if (int other = ShortcutUsing(kDefaultHotkeys[i], i); other >= 0) {
+                SetStatus(HotkeyName(kDefaultHotkeys[i]) + L" ya se usa para: " + kShortcutUse[other], Tone::Bad);
             } else {
                 SetHotkey(i, kDefaultHotkeys[i]);
             }

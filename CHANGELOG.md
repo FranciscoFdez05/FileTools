@@ -2,6 +2,16 @@
 
 ## Sin publicar
 
+### Novedades
+
+- **Lanzadera** (Ctrl+Mayús pulsadas y soltadas solas; se puede cambiar en los ajustes). Una rueda nueva que no necesita archivos:
+  - **Capturas de pantalla** de una región, de una ventana o de la pantalla completa. La pantalla se congela,
+    se elige la zona arrastrando (o con un clic sobre una ventana) y, antes de confirmar, se ajusta con tiradores
+    en esquinas y lados, moviéndola o con las flechas, viendo sus dimensiones en píxeles. Después se copia, se
+    guarda como PNG en la carpeta de capturas o se abre en el editor. Funciona con varios monitores.
+  - **Programas** que elige el usuario (`.exe` o accesos directos del menú Inicio), hasta siete, con su icono.
+    Clic derecho para quitarlos o abrir su ubicación.
+
 ### Correcciones
 
 - **SVG con rellenos de patrón, máscaras o CSS.** Los SVG se dibujan ahora con lunasvg en lugar de Direct2D, que

@@ -2,6 +2,7 @@
 
 #include "gfx.h"
 #include "infopanel.h"
+#include "launcher.h"
 #include "shellutil.h"
 
 #include <shlobj.h>
@@ -14,6 +15,7 @@
 
 #include <cmath>
 #include <execution>
+#include <map>
 #include <numeric>
 #include <thread>
 
@@ -176,8 +178,23 @@ public:
         Appear();
     }
 
+    // Screen captures and pinned programs; needs no files, so it opens from its own shortcut.
+    void ShowLauncher(POINT pt) {
+        if (state_ == State::Working) return;
+        Reset();
+        icons_.clear();  // a program may have been updated, or the wheel moved to a monitor with another DPI
+        mode_ = Mode::Launcher;
+        state_ = State::Open;
+        keyboard_ = true;
+        Place(pt);
+        Rebuild();
+        hover_ = items_.empty() ? -1 : 0;
+        Appear();
+    }
+
     void SetMode(Mode mode) {
-        if (mode == mode_ || !Visible()) return;
+        // The launcher has nothing in common with the file wheels, so modifier keys don't switch it.
+        if (mode == mode_ || !Visible() || mode == Mode::Launcher || mode_ == Mode::Launcher) return;
         mode_ = mode;
         Rebuild();
         hover_ = keyboard_ && !items_.empty() ? 0 : -1;
@@ -209,7 +226,9 @@ public:
         int n = (int)items_.size();
         switch (vk) {
             case VK_ESCAPE: Hide(); return;
-            case VK_TAB: SetMode(Mode((int(mode_) + 1) % 3)); return;
+            case VK_TAB:
+                if (mode_ != Mode::Launcher) SetMode(Mode((int(mode_) + 1) % 3));
+                return;
             case VK_LEFT:
             case VK_UP:
                 if (n) hover_ = hover_ < 0 ? n - 1 : (hover_ - 1 + n) % n;
@@ -459,7 +478,7 @@ private:
     float AppearT() const { return std::min(1.0f, (GetTickCount64() - shownAt_) / 170.0f); }
 
     DWORD DropEffect(DWORD allowed) const {
-        if (hover_ < 0 || state_ == State::Working || files_.empty()) return DROPEFFECT_NONE;
+        if (hover_ < 0 || state_ == State::Working || files_.empty() || mode_ == Mode::Launcher) return DROPEFFECT_NONE;
         if (allowed & DROPEFFECT_COPY) return DROPEFFECT_COPY;
         if (allowed & DROPEFFECT_LINK) return DROPEFFECT_LINK;
         return DROPEFFECT_NONE;
@@ -485,9 +504,15 @@ private:
         return true;
     }
 
+    POINT Center() const { return {origin_.x + int(cx_), origin_.y + int(cy_)}; }
+
     void Launch(int index) {
-        if (index < 0 || index >= (int)items_.size() || files_.empty()) return;
+        if (index < 0 || index >= (int)items_.size() || (files_.empty() && mode_ != Mode::Launcher)) return;
         const ActionDef action = items_[index];
+        if (action.id == "app:add") {
+            AddProgram();
+            return;
+        }
         KillTimer(hwnd_, TIMER_DRAG_END);
         KillTimer(hwnd_, TIMER_AUTOHIDE);
         state_ = State::Working;
@@ -514,6 +539,48 @@ private:
             if (!PostMessageW(hwnd, WM_JOB_DONE, (WPARAM)job, (LPARAM)heap)) delete heap;
             winrt::uninit_apartment();
         }).detach();
+    }
+
+    // The file dialog takes the focus and any click on it would close the wheel anyway, so the
+    // launcher steps aside and comes back with the new program in place.
+    void AddProgram() {
+        POINT at = Center();
+        Hide();
+        AddLauncherApp(nullptr);
+        ShowLauncher(at);
+    }
+
+    // Right-click on a pinned program: remove it or show where it lives.
+    void ProgramMenu(int index) {
+        const ActionDef& item = items_[index];
+        if (!item.id.starts_with("app:") || item.icon.empty()) return;
+        size_t app = std::stoul(item.id.substr(4));
+        fs::path path = item.icon;
+        POINT at = Center();
+        enum { ID_REMOVE = 1, ID_REVEAL };
+        HMENU menu = CreatePopupMenu();
+        AppendMenuW(menu, MF_STRING, ID_REMOVE, L"Quitar de la Lanzadera");
+        AppendMenuW(menu, MF_STRING, ID_REVEAL, L"Abrir ubicación");
+        POINT pt;
+        GetCursorPos(&pt);
+        SetForegroundWindow(hwnd_);
+        UINT cmd = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_NONOTIFY, pt.x, pt.y, 0, hwnd_, nullptr);
+        DestroyMenu(menu);
+        if (cmd == ID_REMOVE) {
+            RemoveLauncherApp(app);
+            // Clicking the menu counts as a click outside the wheel and may already have closed it.
+            ShowLauncher(at);
+        } else if (cmd == ID_REVEAL) {
+            RevealInExplorer({path});
+            Hide();
+        }
+    }
+
+    // Program icons for the launcher, extracted once per path.
+    Gdiplus::Bitmap* ProgramIcon(const fs::path& path) {
+        auto it = icons_.find(path);
+        if (it == icons_.end()) it = icons_.emplace(path, ShellThumbnail(path, int(32 * s_))).first;
+        return it->second.get();
     }
 
     void ShowResult(const JobResult& r) {
@@ -687,7 +754,12 @@ private:
             float tw = gfx::TextWidth(g, item.label, font);
             if (tw > maxW) size = std::max(8.0f * s_, size * maxW / tw);
             Font fitted(gfx::TextFamily(), size, FontStyleBold, UnitPixel);
-            if (item.glyph) {
+            Gdiplus::Bitmap* icon = item.icon.empty() ? nullptr : ProgramIcon(item.icon);
+            if (icon) {
+                float side = 26 * s_;
+                gfx::DrawFitted(g, *icon, RectF(lx - side / 2, ly - 2 * s_ - side, side, side));
+                gfx::DrawCentered(g, item.label, fitted, textBrush, RectF(lx - 60 * s_, ly + 2 * s_, 120 * s_, 20 * s_));
+            } else if (item.glyph) {
                 gfx::DrawGlyph(g, item.glyph, 21.0f * s_, tc, RectF(lx - 30 * s_, ly - 26 * s_, 60 * s_, 26 * s_),
                                0.5f * s_);
                 gfx::DrawCentered(g, item.label, fitted, textBrush, RectF(lx - 60 * s_, ly + 2 * s_, 120 * s_, 20 * s_));
@@ -706,6 +778,7 @@ private:
         if (state_ == State::Failed) return L"Error";
         if (state_ == State::Done) return outputs_.empty() ? L"✓ Hecho" : L"✓ Listo";
         if (hover_ >= 0 && hover_ < (int)items_.size()) return items_[hover_].label;
+        if (mode_ == Mode::Launcher) return L"Elige";
         if (files_.empty()) return L"Suelta aquí";
         if (items_.empty()) return mode_ == Mode::Convert ? L"Sin conversiones" : L"Sin herramientas";
         return filesLabel_;
@@ -843,7 +916,9 @@ private:
 
         if (state_ == State::Open) {
             caption(ModeName(mode_), RectF(cx_ - hole, cy_ - ph / 2 - 20 * s_, 2 * hole, 14 * s_), cap);
-            if (keyboard_) caption(L"Tab · ← → · Intro", RectF(cx_ - hole, cy_ + ph / 2 + 6 * s_, 2 * hole, 14 * s_), cap);
+            if (keyboard_)
+                caption(mode_ == Mode::Launcher ? L"← → · Intro" : L"Tab · ← → · Intro",
+                        RectF(cx_ - hole, cy_ + ph / 2 + 6 * s_, 2 * hole, 14 * s_), cap);
         }
         if (state_ == State::Working) {
             float r = hole - 5 * s_;
@@ -995,6 +1070,7 @@ private:
     std::vector<fs::path> labelFiles_;
     std::wstring filesLabel_, filesName_;
     std::unique_ptr<Gdiplus::Bitmap> filesThumb_;  // first dragged file
+    std::map<fs::path, std::unique_ptr<Gdiplus::Bitmap>> icons_;  // see ProgramIcon()
 };
 
 Wheel g_wheel;
@@ -1045,7 +1121,10 @@ LRESULT Wheel::Handle(UINT msg, WPARAM wp, LPARAM lp) {
             TrackMouseEvent(&tme);
             POINT p{origin_.x + GET_X_LPARAM(lp), origin_.y + GET_Y_LPARAM(lp)};
             int h = HitTest(p);
-            if (h != hover_ && (h != -1 || !keyboard_)) {
+            // The launcher opens centred on the cursor, so the pointer starts on the centre; that must
+            // not wipe the option picked for Intro.
+            bool keepKeyboardPick = keyboard_ && mode_ == Mode::Launcher && h == -2;
+            if (h != hover_ && (h != -1 || !keyboard_) && !keepKeyboardPick) {
                 hover_ = h;
                 Render();
             }
@@ -1083,7 +1162,13 @@ LRESULT Wheel::Handle(UINT msg, WPARAM wp, LPARAM lp) {
             pressed_ = -1;
             return 0;
         }
-        case WM_RBUTTONUP: Hide(); return 0;
+        case WM_RBUTTONUP: {
+            POINT p{origin_.x + GET_X_LPARAM(lp), origin_.y + GET_Y_LPARAM(lp)};
+            int h = HitTest(p);
+            if (mode_ == Mode::Launcher && h >= 0 && state_ == State::Open && !items_[h].icon.empty()) ProgramMenu(h);
+            else Hide();
+            return 0;
+        }
     }
     return DefWindowProcW(hwnd_, msg, wp, lp);
 }
@@ -1097,6 +1182,7 @@ void Create(HINSTANCE instance, Notifier onBackgroundResult) { g_wheel.Create(in
 void Destroy() { g_wheel.Destroy(); }
 void ShowForDrag(POINT pt, Mode mode) { g_wheel.ShowForDrag(pt, mode); }
 void ShowForFiles(POINT pt, std::vector<fs::path> files) { g_wheel.ShowForFiles(pt, std::move(files)); }
+void ShowLauncher(POINT pt) { g_wheel.ShowLauncher(pt); }
 void SetMode(Mode mode) { g_wheel.SetMode(mode); }
 void Hide() { g_wheel.Hide(); }
 void OnDragEnded() { g_wheel.OnDragEnded(); }

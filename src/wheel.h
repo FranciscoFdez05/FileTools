@@ -12,6 +12,8 @@ void Destroy();
 void ShowForDrag(POINT pt, Mode mode);
 // Shows the wheel for already-known files (keyboard shortcut on an Explorer selection).
 void ShowForFiles(POINT pt, std::vector<fs::path> files);
+// Shows the launcher wheel (screen captures and pinned programs) under the cursor.
+void ShowLauncher(POINT pt);
 void SetMode(Mode mode);
 void Hide();
 

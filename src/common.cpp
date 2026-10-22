@@ -221,6 +221,7 @@ std::wstring HotkeyName(DWORD hotkey) {
     if (mods & MOD_ALT) name += L"Alt+";
     if (mods & MOD_SHIFT) name += L"Mayús+";
     if (mods & MOD_WIN) name += L"Win+";
+    if (!vk) return name.empty() ? name : name.substr(0, name.size() - 1);  // modifiers alone: "Ctrl+Mayús"
     if ((vk >= 'A' && vk <= 'Z') || (vk >= '0' && vk <= '9')) return name + wchar_t(vk);
     if (vk >= VK_F1 && vk <= VK_F24) return name + L"F" + std::to_wstring(vk - VK_F1 + 1);
     switch (vk) {
@@ -262,8 +263,10 @@ void LoadSettings() {
     ReadDword(L"Notifications", s.notifications);
     ReadDword(L"WheelHotkey", s.wheelHotkey);
     ReadDword(L"SettingsHotkey", s.settingsHotkey);
+    ReadDword(L"LauncherHotkey", s.launcherHotkey);
     if (!HotkeyVk(s.wheelHotkey)) s.wheelHotkey = kDefaultWheelHotkey;
     if (!HotkeyVk(s.settingsHotkey)) s.settingsHotkey = kDefaultSettingsHotkey;
+    if (!HotkeyVk(s.launcherHotkey)) s.launcherHotkey = kDefaultLauncherHotkey;
     s.quality = std::clamp<DWORD>(s.quality, 30, 100);
 }
 
@@ -280,6 +283,7 @@ void SaveSettings() {
     put(L"Notifications", s.notifications);
     put(L"WheelHotkey", s.wheelHotkey);
     put(L"SettingsHotkey", s.settingsHotkey);
+    put(L"LauncherHotkey", s.launcherHotkey);
     RegCloseKey(key);
 }
 

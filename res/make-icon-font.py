@@ -50,6 +50,11 @@ ICONS = {
     0xE771: "wand",                    # SIN FONDO
     0xED14: "qr_code",                 # ENVIAR
     0xE740: "arrow_maximize",          # ESCALAR / Tamaño
+    # Launcher wheel (src/actions.cpp)
+    0xE7C4: "screenshot",              # REGIÓN
+    0xE737: "window",                  # VENTANA
+    0xE7F4: "desktop",                 # PANTALLA
+    0xE710: "add",                     # AÑADIR
     # Editor (src/editor.cpp)
     0xE74E: "save",
     0xE8AB: "flip_horizontal",

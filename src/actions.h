@@ -3,7 +3,8 @@
 
 #include <memory>
 
-enum class Mode { Convert = 0, Tools = 1, Actions = 2 };
+// Launcher works without files: screen captures and the programs the user pinned.
+enum class Mode { Convert = 0, Tools = 1, Actions = 2, Launcher = 3 };
 enum class Kind { Image, Pdf, Audio, Video, Document, Archive, Folder, Other };
 
 struct ActionDef {
@@ -11,6 +12,7 @@ struct ActionDef {
     std::wstring label;  // shown on the wheel
     wchar_t glyph = 0;   // Segoe Fluent Icons code point, 0 = text only
     bool ui = false;     // runs on the UI thread (dialogs, clipboard, shell)
+    fs::path icon;       // program whose own icon replaces the glyph (launcher)
 };
 
 // Name/value table shown in the info popup (hashes, metadata).

@@ -31,6 +31,8 @@ add_executable(FileTools WIN32
   src/vectorize.cpp
   src/svg.cpp
   src/svgtext.cpp
+  src/capture.cpp
+  src/launcher.cpp
   src/fileinfo.cpp
   src/infopanel.cpp
   src/glass.cpp
