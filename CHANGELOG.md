@@ -1,5 +1,14 @@
 # Cambios
 
+## Sin publicar
+
+### Correcciones
+
+- **SVG con rellenos de patrón, máscaras o CSS.** Los SVG se dibujan ahora con lunasvg en lugar de Direct2D, que
+  no admite `<pattern>`, `<mask>`, `<marker>` ni las reglas de `<style>`: los rellenos de patrón (por ejemplo,
+  cables a rayas) salían en negro y esas otras partes se perdían. lunasvg también dibuja el texto. Direct2D queda
+  como respaldo si lunasvg no puede abrir el archivo.
+
 ## 1.2.0
 
 ### Novedades

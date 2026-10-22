@@ -10,6 +10,12 @@
 #include <wincodec.h>
 #include <wrl/client.h>
 
+#ifdef FT_HAVE_LUNASVG
+#include <lunasvg.h>
+
+#include <mutex>
+#endif
+
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -82,15 +88,83 @@ float RenderScale(D2D1_SIZE_F size) {
     return target / longSide;
 }
 
-}  // namespace
+#ifdef FT_HAVE_LUNASVG
+// lunasvg loads every font in the Windows font folder by its real family name, so files written on
+// Linux (Inkscape, LibreOffice, matplotlib) would miss their fonts. These register the
+// metric-compatible Windows file under the Linux name so centred labels keep their width.
+struct FontAlias {
+    const char* family;
+    const char* regular;
+    const char* bold;
+    const char* italic;
+    const char* boldItalic;
+};
+constexpr FontAlias kFontAliases[] = {
+    {"Helvetica", "arial.ttf", "arialbd.ttf", "ariali.ttf", "arialbi.ttf"},
+    {"Liberation Sans", "arial.ttf", "arialbd.ttf", "ariali.ttf", "arialbi.ttf"},
+    {"Liberation Serif", "times.ttf", "timesbd.ttf", "timesi.ttf", "timesbi.ttf"},
+    {"Liberation Mono", "cour.ttf", "courbd.ttf", "couri.ttf", "courbi.ttf"},
+    {"DejaVu Sans", "verdana.ttf", "verdanab.ttf", "verdanai.ttf", "verdanaz.ttf"},
+    {"Bitstream Vera Sans", "verdana.ttf", "verdanab.ttf", "verdanai.ttf", "verdanaz.ttf"},
+    {"DejaVu Serif", "georgia.ttf", "georgiab.ttf", "georgiai.ttf", "georgiaz.ttf"},
+    {"DejaVu Sans Mono", "consola.ttf", "consolab.ttf", "consolai.ttf", "consolaz.ttf"},
+    {"system-ui", "segoeui.ttf", "segoeuib.ttf", "segoeuii.ttf", "segoeuiz.ttf"},
+};
 
-bool IsSvgData(const uint8_t* data, size_t size) {
-    // The root may follow an XML declaration, comments or a DOCTYPE, so look a little way in.
-    std::string_view head(reinterpret_cast<const char*>(data), std::min<size_t>(size, 4096));
-    return head.find("<svg") != std::string_view::npos;
+void RegisterFontAliases() {
+    wchar_t windows[MAX_PATH];
+    UINT len = GetWindowsDirectoryW(windows, MAX_PATH);
+    if (!len || len >= MAX_PATH) return;  // Labels then fall back to Arial, which beats failing the image.
+    // plutovg opens fonts with fopen, which takes the ANSI code page, not UTF-8.
+    std::string fonts(len * 2 + 8, '\0');
+    int n = WideCharToMultiByte(CP_ACP, 0, windows, (int)len, fonts.data(), (int)fonts.size(), nullptr, nullptr);
+    fonts.resize(n > 0 ? n : 0);
+    fonts += "\\Fonts\\";
+    for (const FontAlias& a : kFontAliases) {
+        // A missing file (e.g. a trimmed Windows install) only loses that alias.
+        lunasvg_add_font_face_from_file(a.family, false, false, (fonts + a.regular).c_str());
+        lunasvg_add_font_face_from_file(a.family, true, false, (fonts + a.bold).c_str());
+        lunasvg_add_font_face_from_file(a.family, false, true, (fonts + a.italic).c_str());
+        lunasvg_add_font_face_from_file(a.family, true, true, (fonts + a.boldItalic).c_str());
+    }
 }
 
-Image RasterizeSvg(const uint8_t* data, size_t size) {
+// lunasvg handles what Direct2D's SVG subset drops (<text>, <pattern>, <mask>, <marker>, CSS in
+// <style>). Returns false when it can't parse the file, so the caller can still try Direct2D.
+bool RasterizeWithLunasvg(const uint8_t* data, size_t size, Image& out) {
+    // Its font cache is a process-wide static whose glyph cache fills while drawing; jobs run on
+    // their own threads, so parsing and drawing are serialized.
+    static std::mutex lock;
+    std::lock_guard<std::mutex> guard(lock);
+    static std::once_flag aliasesOnce;
+    std::call_once(aliasesOnce, RegisterFontAliases);
+
+    auto doc = lunasvg::Document::loadFromData(reinterpret_cast<const char*>(data), size);
+    if (!doc) return false;
+    D2D1_SIZE_F intrinsic = D2D1::SizeF(doc->width(), doc->height());
+    if (!(intrinsic.width > 0 && intrinsic.height > 0)) return false;
+    float scale = RenderScale(intrinsic);
+    uint32_t w = std::max(1u, (uint32_t)std::lround(intrinsic.width * scale));
+    uint32_t h = std::max(1u, (uint32_t)std::lround(intrinsic.height * scale));
+
+    Image img(w, h);
+    // Drawn straight into the image buffer: ARGB32 premultiplied is BGRA premultiplied in memory.
+    lunasvg::Bitmap bitmap(img.px.data(), (int)w, (int)h, (int)w * 4);
+    if (bitmap.isNull()) Fail(L"SVG demasiado grande");
+    doc->render(bitmap, lunasvg::Matrix::scaled(w / intrinsic.width, h / intrinsic.height));
+
+    // Image holds straight alpha.
+    for (size_t i = 0; i < img.px.size(); i += 4) {
+        uint8_t a = img.px[i + 3];
+        if (a == 0 || a == 255) continue;
+        for (size_t c = 0; c < 3; ++c) img.px[i + c] = uint8_t(std::min(255, (img.px[i + c] * 255 + a / 2) / a));
+    }
+    out = std::move(img);
+    return true;
+}
+#endif
+
+Image RasterizeWithDirect2D(const uint8_t* data, size_t size) {
     ComPtr<IStream> stream;
     stream.Attach(SHCreateMemStream(data, (UINT)size));
     if (!stream) Fail(L"Sin memoria para leer el SVG");
@@ -139,4 +213,19 @@ Image RasterizeSvg(const uint8_t* data, size_t size) {
     Image img(w, h);
     CheckHr(conv->CopyPixels(nullptr, w * 4, (UINT)img.px.size(), img.px.data()), L"No se pudo leer el SVG");
     return img;
+}
+
+}  // namespace
+
+bool IsSvgData(const uint8_t* data, size_t size) {
+    // The root may follow an XML declaration, comments or a DOCTYPE, so look a little way in.
+    std::string_view head(reinterpret_cast<const char*>(data), std::min<size_t>(size, 4096));
+    return head.find("<svg") != std::string_view::npos;
+}
+
+Image RasterizeSvg(const uint8_t* data, size_t size) {
+#ifdef FT_HAVE_LUNASVG
+    if (Image img; RasterizeWithLunasvg(data, size, img)) return img;
+#endif
+    return RasterizeWithDirect2D(data, size);
 }

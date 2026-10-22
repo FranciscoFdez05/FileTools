@@ -62,3 +62,11 @@ if(libavif_FOUND)
   target_compile_definitions(FileTools PRIVATE FT_HAVE_AVIF)
   message(STATUS "AVIF: enabled")
 endif()
+
+# Without lunasvg, SVG falls back to Direct2D, which lacks <pattern>, <mask>, <marker> and <style>.
+find_package(lunasvg CONFIG QUIET)
+if(lunasvg_FOUND)
+  target_link_libraries(FileTools PRIVATE lunasvg::lunasvg)
+  target_compile_definitions(FileTools PRIVATE FT_HAVE_LUNASVG)
+  message(STATUS "lunasvg: enabled")
+endif()

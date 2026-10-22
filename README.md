@@ -148,7 +148,7 @@ Las novedades de cada versión están en [CHANGELOG.md](CHANGELOG.md).
 ```
 
 El script localiza Visual Studio y su vcpkg, instala las dependencias de [vcpkg.json](vcpkg.json)
-(libwebp y libavif, enlazadas estáticamente) y deja el ejecutable en `build\Release\FileTools.exe`.
+(libwebp, libavif y lunasvg, enlazadas estáticamente) y deja el ejecutable en `build\Release\FileTools.exe`.
 Para usar otro vcpkg, define `VCPKG_ROOT`.
 
 A mano:
@@ -238,8 +238,8 @@ request. Estructura del código:
 | [src/media.cpp](src/media.cpp) | ffmpeg y tar.exe |
 | [src/bgremove.cpp](src/bgremove.cpp) | Quitar fondo: U²-Net con Windows ML y refinado del borde |
 | [src/vectorize.cpp](src/vectorize.cpp) | Vectorizar imágenes a SVG |
-| [src/svg.cpp](src/svg.cpp) | Rasterizar SVG con Direct2D |
-| [src/svgtext.cpp](src/svgtext.cpp) | Texto de los SVG (Direct2D no lo dibuja) con DirectWrite |
+| [src/svg.cpp](src/svg.cpp) | Rasterizar SVG con lunasvg (Direct2D como respaldo) |
+| [src/svgtext.cpp](src/svgtext.cpp) | Texto de los SVG con DirectWrite cuando se dibujan con Direct2D (que no lo dibuja) |
 | [src/fileinfo.cpp](src/fileinfo.cpp) | Hashes, metadatos (Windows y ExifTool) y limpieza de documentos de Office |
 | [src/infopanel.cpp](src/infopanel.cpp) | Ventana de hash y metadatos |
 | [src/sendpanel.cpp](src/sendpanel.cpp) | Ventana de enviar: QR, enlace, Bluetooth y Compartir |
