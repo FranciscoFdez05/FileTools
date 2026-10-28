@@ -1,6 +1,14 @@
 # Cambios
 
-## Sin publicar
+## 1.3.1
+
+### Correcciones
+
+- **La rueda se abría en juegos.** Mover el ratón con el botón pulsado y tocar Ctrl, Mayús o Alt abría la rueda
+  aunque no se arrastrasen archivos. Ahora solo se abre durante un arrastre real de archivos, y la Lanzadera
+  (Ctrl+Mayús) no se abre con un juego, vídeo o presentación a pantalla completa en primer plano.
+
+## 1.3.0
 
 ### Novedades
 

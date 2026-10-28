@@ -64,13 +64,19 @@ public:
 
     STDMETHODIMP DragEnter(IDataObject* data, DWORD, POINTL pt, DWORD* effect) override {
         POINT p{pt.x, pt.y};
+        auto files = FilesFromDataObject(data);
+        // Opened by a drag of text, links, etc.: there is nothing for the file wheels to work on.
+        if (files.empty() && files_.empty() && state_ == State::Open && !keyboard_) {
+            Hide();
+            *effect = DROPEFFECT_NONE;
+            return S_OK;
+        }
         if (helper_) {
             helper_->DragEnter(hwnd_, data, &p, *effect);
             // Explorer's drag image (thumbnail and name under the cursor) would sit off-centre on top
             // of the well, which shows its own centred thumbnail and name.
             helper_->Show(FALSE);
         }
-        auto files = FilesFromDataObject(data);
         if (!files.empty() && files != files_) {
             files_ = std::move(files);
             Rebuild();

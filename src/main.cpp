@@ -236,6 +236,14 @@ void OpenSettings() {
     OpenSettingsPanel(pt, {[] { DestroyWindow(g_main); }, UnregisterHotkeys, RegisterHotkeys});
 }
 
+void ShowLauncherAtCursor() {
+    // Games press Ctrl+Shift all the time; a wheel popping up over them would steal the focus.
+    if (FullscreenAppActive()) return;
+    POINT pt;
+    GetCursorPos(&pt);
+    wheel::ShowLauncher(pt);
+}
+
 void ShowHelp() {
     const Settings& s = AppSettings();
     std::wstring text =
@@ -310,26 +318,17 @@ LRESULT CALLBACK MainProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             GetCursorPos(&pt);
             Mode mode = Mode(wp);
             if (wheel::KeyboardActive()) wheel::SetMode(mode);
-            else if (g_dragging) wheel::ShowForDrag(pt, mode);
+            else if (g_dragging && OleDragInProgress(g_downPt)) wheel::ShowForDrag(pt, mode);
             return 0;
         }
         case WM_HOOK_DRAG_END: wheel::OnDragEnded(); return 0;
         case WM_HOOK_MOUSEDOWN: wheel::OnGlobalMouseDown(POINT{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)}); return 0;
         case WM_HOOK_NAVKEY: wheel::OnNavKey((UINT)wp); return 0;
         case WM_OPEN_SETTINGS: OpenSettings(); return 0;
-        case WM_HOOK_LAUNCHER: {
-            POINT pt;
-            GetCursorPos(&pt);
-            wheel::ShowLauncher(pt);
-            return 0;
-        }
+        case WM_HOOK_LAUNCHER: ShowLauncherAtCursor(); return 0;
         case WM_HOTKEY:
             if (wp == kSettingsHotkeyId) OpenSettings();
-            if (wp == kLauncherHotkeyId) {
-                POINT pt;
-                GetCursorPos(&pt);
-                wheel::ShowLauncher(pt);
-            }
+            if (wp == kLauncherHotkeyId) ShowLauncherAtCursor();
             if (wp == kHotkeyId) {
                 auto files = ExplorerSelection();
                 if (files.empty()) {

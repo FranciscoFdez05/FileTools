@@ -14,6 +14,11 @@ bool CopyTextToClipboard(HWND hwnd, const std::wstring& text);
 // Puts an opaque image on the clipboard as a bitmap (CF_DIB) and as PNG, which some apps prefer.
 bool CopyImageToClipboard(HWND hwnd, const Image& img);
 std::vector<fs::path> ExplorerSelection();
+// True while an app runs an OLE drag (files, text...), started at `downPt`. A mouse moved with the
+// button held (games, drawing, selecting) isn't one.
+bool OleDragInProgress(POINT downPt);
+// True when the foreground window is a game, video or presentation covering its whole monitor.
+bool FullscreenAppActive();
 bool PickFolder(HWND owner, fs::path& out);
 // Asks for a program (.exe or shortcut), starting in the Start menu's program folder.
 bool PickProgram(HWND owner, fs::path& out);

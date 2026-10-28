@@ -304,6 +304,40 @@ std::vector<fs::path> ExplorerSelection() {
     return fallback;
 }
 
+// DoDragDrop gives the mouse capture to OLE's hidden CLIPBRDWNDCLASS window in the source's thread.
+static bool ThreadHasOleCapture(HWND hwnd) {
+    DWORD thread = hwnd ? GetWindowThreadProcessId(hwnd, nullptr) : 0;
+    GUITHREADINFO info{sizeof(info)};
+    if (!thread || !GetGUIThreadInfo(thread, &info) || !info.hwndCapture) return false;
+    wchar_t cls[64] = {};
+    GetClassNameW(info.hwndCapture, cls, 64);
+    return !wcscmp(cls, L"CLIPBRDWNDCLASS");
+}
+
+bool OleDragInProgress(POINT downPt) {
+    // The source is usually the foreground window; the one under the press covers sources that don't activate.
+    return ThreadHasOleCapture(GetForegroundWindow()) || ThreadHasOleCapture(WindowFromPoint(downPt));
+}
+
+bool FullscreenAppActive() {
+    QUERY_USER_NOTIFICATION_STATE state;
+    if (SUCCEEDED(SHQueryUserNotificationState(&state)) &&
+        (state == QUNS_RUNNING_D3D_FULL_SCREEN || state == QUNS_BUSY || state == QUNS_PRESENTATION_MODE))
+        return true;
+    // Borderless games don't always set those states, so also check whether the window covers its monitor.
+    HWND fg = GetForegroundWindow();
+    DWORD pid = 0;
+    if (!fg || !GetWindowThreadProcessId(fg, &pid) || pid == GetCurrentProcessId()) return false;
+    wchar_t cls[64] = {};
+    GetClassNameW(fg, cls, 64);
+    if (!wcscmp(cls, L"Progman") || !wcscmp(cls, L"WorkerW")) return false;  // the desktop covers it too
+    RECT rc;
+    MONITORINFO mi{sizeof(mi)};
+    if (!GetWindowRect(fg, &rc) || !GetMonitorInfoW(MonitorFromWindow(fg, MONITOR_DEFAULTTONULL), &mi)) return false;
+    return rc.left <= mi.rcMonitor.left && rc.top <= mi.rcMonitor.top && rc.right >= mi.rcMonitor.right &&
+           rc.bottom >= mi.rcMonitor.bottom;
+}
+
 bool PickFolder(HWND owner, fs::path& out) {
     ComPtr<IFileOpenDialog> dlg;
     if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dlg)))) return false;

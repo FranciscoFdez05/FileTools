@@ -103,7 +103,8 @@ como privada.
 
 **Ctrl+Mayús** (pulsar y soltar las dos teclas, sin otra entre medias) abre la **Lanzadera**, una rueda que no
 necesita archivos. Ctrl+Mayús sigue funcionando en otros atajos (Ctrl+Mayús+T, Ctrl+Mayús+clic…):
-solo abre la rueda si se sueltan sin pulsar nada más, y no durante un arrastre. Si Windows usa Ctrl+Mayús para
+solo abre la rueda si se sueltan sin pulsar nada más, no durante un arrastre ni con un juego, vídeo o
+presentación a pantalla completa en primer plano. Si Windows usa Ctrl+Mayús para
 cambiar la distribución del teclado, ocurrirán las dos cosas.
 
 - **Región:** congela la pantalla (todos los monitores) y arrastras para elegir la zona; un clic sin arrastrar
@@ -201,7 +202,8 @@ Cada push a `main` se compila en GitHub Actions; al publicar un tag `v*` se crea
 3. Suelta sobre una opción. El resultado aparece en el centro de la rueda: **arrástralo** a donde quieras, haz
    **clic** para verlo en el Explorador o suéltalo sobre otra opción para encadenar operaciones.
 
-Durante el arrastre puedes pulsar otra tecla para cambiar de rueda. Con archivos seleccionados en el Explorador,
+Durante el arrastre puedes pulsar otra tecla para cambiar de rueda. La rueda solo aparece cuando lo que se arrastra
+son archivos: mantener el botón pulsado y mover el ratón en un juego, al dibujar o al seleccionar texto no la abre. Con archivos seleccionados en el Explorador,
 **Ctrl+Alt+Espacio** abre la rueda con el teclado (flechas, Intro, Tab, Esc). **Ctrl+Mayús** abre la Lanzadera
 (capturas de pantalla y programas, ver arriba). Los atajos se pueden cambiar en los ajustes.
 
